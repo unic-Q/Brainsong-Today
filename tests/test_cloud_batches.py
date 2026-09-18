@@ -25,8 +25,9 @@ def make_item(n, category='行业', published='2026-09-18', title=None):
                    published, '官网', '公司发布脑电采集设备，提供面向教育和睡眠研究的数据采集功能。', category=category)
 
 
-def run_batch(tmp_path, monkeypatch, items, reject_first=False, counts=None):
+def run_batch(tmp_path, monkeypatch, items, reject_first=False, counts=None, cfg_updates=None):
     cfg, policy, _, _ = pipeline.load(ROOT)
+    cfg.update(cfg_updates or {})
     state = State(tmp_path / 'test.sqlite3')
     if counts:
         state.put('counts', counts)
@@ -56,6 +57,63 @@ def test_weighted_batches_stop_and_keep_remaining(tmp_path, monkeypatch):
     assert all(a.matches for a in picks)
     assert len(state.candidates()) == len(pool) == 130
     assert state.db.execute('select count(*) from delivered').fetchone()[0] == 0
+    state.close()
+
+
+def test_many_unknown_dates_cannot_starve_ready_news(tmp_path, monkeypatch):
+    missing = [make_item(100+i, published='') for i in range(60)]
+    ready = [make_item(i) for i in range(9)]
+    state, assessed, _, picks = run_batch(tmp_path, monkeypatch, missing + ready,
+                                          cfg_updates={'max_analysis_candidates': 9})
+    assert len(picks) == 7
+    assert set(assessed).issubset({a.identity for a in ready})
+    assert len(state.candidates()) == 69
+    state.close()
+
+
+def test_full_academic_direction_yields_to_industry_and_capital():
+    picks = [make_item(i, '学术') for i in range(3)]
+    more_papers = [make_item(i+10, '学术') for i in range(20)]
+    industry = make_item(30)
+    capital = make_item(31)
+    estimate = lambda a: 100 if a.category == '学术' else 70
+    batch = pipeline.direction_batch(more_papers + [industry, capital], picks,
+                                     {'max_category_items': 3}, estimate, 6)
+    assert batch == [industry, capital] or batch == [capital, industry]
+
+
+def test_direction_round_robin_before_one_direction_consumes_batch():
+    papers = [make_item(i, '学术') for i in range(20)]
+    other = [make_item(30), make_item(31), make_item(32)]
+    batch = pipeline.direction_batch(papers+other, [], {}, lambda a: 100 if a.category == '学术' else 70, 6)
+    assert {a.category for a in batch[:4]} == {'行业', '资本', '政策', '学术'}
+
+
+def test_skipped_metadata_does_not_spend_ai_budget(tmp_path, monkeypatch):
+    cfg, policy, _, _ = pipeline.load(ROOT)
+    cfg['max_analysis_candidates'] = 3
+    state = State(tmp_path / 'state.db')
+    rows = [make_item(i) for i in range(9)]
+    for a in rows:
+        a.summary = a.source_summary = a.body = a.source_excerpt = ''
+    reads = []
+    class Reader:
+        def get(self, url):
+            reads.append(url)
+            return 'old' if len(reads) <= 6 else 'new'
+    def metadata(a, html):
+        a.published = '2020-01-01' if html == 'old' else str(DAY)
+        a.summary = '公司发布脑电耳机新品，支持脑电数据采集和教育研究。'
+    assessed = []
+    def assess(batch, *args):
+        assessed.extend(batch)
+        return batch
+    monkeypatch.setattr(pipeline, 'metadata', metadata)
+    monkeypatch.setattr(pipeline, 'relevance_filter', assess)
+    monkeypatch.setattr(pipeline, 'merge_event_reports', lambda items,*args: items)
+    monkeypatch.setattr(pipeline, 'finish_item', lambda *args,**kwargs: True)
+    pipeline.process_candidates(rows,cfg,policy['rules'],policy['exclude'],state,object(),Reader(),DAY,lambda *args,**kwargs: None)
+    assert len(reads) == 9 and len(assessed) == 3
     state.close()
 
 

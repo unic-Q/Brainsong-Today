@@ -34,6 +34,15 @@ def _rss_item_xml(index: int, hour: int = 1, body: str = "MCP automation") -> st
     <pubDate>Sun, 12 Jul 2026 {hour:02d}:00:00 GMT</pubDate></item>"""
 
 
+def test_atom_updated_does_not_override_old_publication():
+    xml = '''<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+    <title>Old EEG paper</title><link href="https://example.org/paper"/>
+    <updated>2026-07-12T01:00:00Z</updated>
+    <published>2025-01-01T01:00:00Z</published><summary>Research abstract</summary>
+    </entry></feed>'''
+    assert parse_feed(xml, SearchWindow.for_beijing_day(date(2026, 7, 12))) == []
+
+
 def _item(**overrides) -> RssItem:
     values = {
         "channel_id": "news",

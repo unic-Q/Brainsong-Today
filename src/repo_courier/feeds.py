@@ -433,9 +433,9 @@ def parse_feed_chunks(
         for _, node in parser.read_events():
             if _local_name(node.tag) not in {"item", "entry"}:
                 continue
-            published_at = _parse_datetime(
-                _first_text(node, {"pubDate", "published", "updated", "date"})
-            )
+            # Publication date wins even when <updated> appears first in Atom.
+            published_at = next((parsed for name in ("pubDate", "published", "date", "updated")
+                                 if (parsed := _parse_datetime(_first_text(node, {name}))) is not None), None)
             if published_at is not None and window.contains(published_at):
                 entry = _parse_entry(node, published_at, encoding, content_token_limit)
                 if entry.title and entry.url:

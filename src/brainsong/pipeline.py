@@ -85,6 +85,37 @@ def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
     return False
 
 
+def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploration_due=False):
+    """Prioritize evidence-ready, underfilled directions without output quotas."""
+    def needs_read(a):
+        return not a.published or (not usable_summary(a.summary, a.title) and not a.body)
+    def full(a):
+        limit = min(cfg.get('max_category_items', 3), cfg.get('max_academic_items', 3)) if a.category == '学术' else cfg.get('max_category_items', 3)
+        return sum(p.category == a.category for p in picks) >= limit
+    candidates = []
+    for a in queue:
+        if needs_read(a) and not can_read:
+            continue
+        if full(a):
+            current = [p for p in picks if p.category == a.category]
+            # Only clearly stronger, dated candidates can spend work replacing
+            # a full direction; unknown dates cannot claim to be fresher.
+            if not current or not a.published or estimate(a) <= min(estimate(p) for p in current) * 1.1:
+                continue
+        candidates.append(a)
+    result = []
+    while candidates and len(result) < size:
+        def priority(a):
+            evidence_level = 2 if not a.published else 1 if needs_read(a) else 0
+            representation = sum(p.category == a.category for p in picks + result)
+            return (full(a), evidence_level, representation, not (a.exploration and exploration_due),
+                    -estimate(a), -max((r['weight'] for r in a.matches), default=0), a.identity)
+        chosen = min(candidates, key=priority)
+        candidates.remove(chosen)
+        result.append(chosen)
+    return result
+
+
 def process_candidates(items, cfg, rules, exclusions, state, provider, reader, today,
                        progress, *, offline=False, no_ai=False):
     """Retain everything; spend enrichment and AI work only on priority batches."""
@@ -102,7 +133,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         import re
         weight = max((r['weight'] for r in item.matches), default=20)
         signal = bool(re.search('发布|新品|融资|收购|标准|突破|launch|funding', item.title, re.I))
-        return (weight + (20 if signal else 0)) * source_factor(item, scoring) * (freshness_factor(item, today, scoring) if item.published else .8)
+        return (weight + (20 if signal else 0)) * source_factor(item, scoring) * (freshness_factor(item, today, scoring) if item.published else 0)
     queue.sort(key=lambda a: (a.exploration, -estimate(a),
                              a.category == '学术', a.category != '政策', a.identity))
     counts = state.get('counts', {'total': 0, 'exploration': 0})
@@ -120,20 +151,29 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                a.in_window(today, cfg['windows']) and state.sent(a)] if ai else []
     accepted, picks, rejected = [], [], set()
     batch_size = min(6, max(1, cfg['ai']['batch_size']))
-    cursor = extra_batches = metadata_reads = 0
+    cursor = analysed = extra_batches = metadata_reads = 0
+    remaining = list(queue)
     budget = cfg.get('max_analysis_candidates', 36)
-    while cursor < min(len(queue), budget):
+    while remaining and analysed < budget:
         if len(picks) >= cfg['max_items']:
-            promising = [a for a in queue[cursor:] if estimate(a) > min(ranking_score(p, today, scoring) for p in picks) * 1.1]
+            promising = [a for a in remaining if a.published and estimate(a) > min(ranking_score(p, today, scoring) for p in picks) * 1.1]
             if not promising or extra_batches >= cfg.get('max_extra_batches', 1):
                 break
-            tail = queue[cursor:]
-            queue[cursor:] = promising + [a for a in tail if a not in promising]
             extra_batches += 1
             progress('priority check extra batch', candidates=len(promising))
-        raw = queue[cursor:min(cursor+batch_size, budget)]
+            available = promising
+        else:
+            available = remaining
+        raw = direction_batch(available, picks, cfg, estimate, min(batch_size, budget-analysed),
+                              can_read=offline or metadata_reads < cfg.get('max_metadata_reads', 12),
+                              exploration_due=allowance > 0 and not any(a.exploration for a in picks))
+        if not raw:
+            progress('no eligible refill within evidence and quota limits', ready=len(picks))
+            break
+        chosen_ids = {a.identity for a in raw}
+        remaining = [a for a in remaining if a.identity not in chosen_ids]
         cursor += len(raw)
-        progress('batch start', processed=cursor, total=len(queue), ready=len(picks))
+        progress('batch start', inspected=cursor, analysed=analysed, total=len(queue), ready=len(picks))
         batch = []
         for offset, item in enumerate(raw, 1):
             if not offline and ((not item.published and item.matches) or
@@ -154,6 +194,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                 continue
             if prepare(item, rules, exclusions) and item.in_window(today, cfg['windows']):
                 batch.append(item)
+        analysed += len(batch)
         accepted.extend(relevance_filter(batch, provider, cfg, rules, state, today) if ai
                         else [a for a in batch if a.accepted])
         if ai and batch:
@@ -182,8 +223,12 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         # Preserve every completed score even if a later batch is cancelled.
         for item in batch:
             state.save(item)
-        progress('batch complete', processed=cursor, accepted=len(accepted), ready=len(picks))
-    progress('selection complete', processed=cursor, deferred=len(queue)-cursor, ready=len(picks))
+        progress('batch complete', inspected=cursor, analysed=analysed, accepted=len(accepted), ready=len(picks))
+        for category in ('行业', '资本', '政策', '学术'):
+            progress('direction ' + category, ready=sum(a.category == category for a in picks),
+                     remaining_ready=sum(a.category == category and bool(a.published) and
+                                         (usable_summary(a.summary, a.title) or bool(a.body)) for a in remaining))
+    progress('selection complete', inspected=cursor, analysed=analysed, deferred=len(remaining), ready=len(picks))
     return pool, picks
 
 
