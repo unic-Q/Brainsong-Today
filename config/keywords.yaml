@@ -1,0 +1,690 @@
+exclude:
+- 招聘
+- 股吧
+- 概念股
+- 代理加盟
+- 伪科学
+rules:
+- id: r01-脑机接口
+  weight: 100
+  groups:
+  - - 脑机接口
+    - 脑机公司
+    - 脑机企业
+    - 脑机耳机
+    - brain-computer interface
+    - brain computer interface
+    - BCI
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 脑机接口
+  exploration: false
+  direct: true
+- id: r02-脑电大模型
+  weight: 100
+  groups:
+  - - 脑电大模型
+    - EEG大模型
+    - EEG foundation model
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  - 学术
+  query: 脑电大模型 OR EEG大模型 OR EEG foundation model
+  exploration: false
+  direct: true
+- id: r03-耳周脑电
+  weight: 95
+  groups:
+  - - 耳周脑电
+    - ear-EEG
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 耳周脑电 OR ear-EEG
+  exploration: false
+  direct: true
+- id: r04-脑电耳机
+  weight: 95
+  groups:
+  - - 脑电耳机
+    - EEG耳机
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 脑电耳机 OR EEG耳机
+  exploration: false
+  direct: true
+- id: r05-教育脑机接口
+  weight: 95
+  groups:
+  - - 教育脑机接口
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 教育脑机接口
+  exploration: false
+  direct: true
+- id: r06-耳机 教育 应用
+  weight: 95
+  groups:
+  - - 耳机
+    - headphones
+    - headset
+  - - 教育
+    - 教学
+    - 课堂
+    - 学习
+    - education
+    - classroom
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 耳机 教育 应用
+  exploration: false
+  direct: false
+- id: r07-教育耳机
+  weight: 90
+  groups:
+  - - 教育耳机
+    - 学习耳机
+    - 课堂耳机
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 教育耳机 OR 学习耳机 OR 课堂耳机
+  exploration: false
+  direct: false
+- id: r08-课堂专注度
+  weight: 90
+  groups:
+  - - 课堂专注度
+    - 学生注意力监测
+  - - 脑电
+    - 耳机
+    - 可穿戴
+    - EEG
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 课堂专注度 OR 学生注意力监测
+  exploration: false
+  direct: false
+- id: r09-学习状态监测
+  weight: 90
+  groups:
+  - - 学习状态监测
+  - - 脑电
+    - 耳机
+    - 可穿戴
+    - EEG
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 学习状态监测
+  exploration: false
+  direct: false
+- id: r10-脑电数据采集
+  weight: 90
+  groups:
+  - - 脑电数据采集
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 脑电数据采集
+  exploration: false
+  direct: true
+- id: r11-EEG数据采集
+  weight: 85
+  groups:
+  - - EEG数据采集
+    - 生理信号采集
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: EEG数据采集 OR 生理信号采集
+  exploration: false
+  direct: true
+- id: r12-脑电数据存储
+  weight: 85
+  groups:
+  - - 脑电数据存储
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 脑电数据存储
+  exploration: false
+  direct: true
+- id: r13-EEG数据存储
+  weight: 80
+  groups:
+  - - EEG数据存储
+    - 神经数据存储
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: EEG数据存储 OR 神经数据存储
+  exploration: false
+  direct: true
+- id: r14-脑电数据集
+  weight: 85
+  groups:
+  - - 脑电数据集
+    - EEG dataset
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  - 学术
+  query: 脑电数据集 OR EEG dataset
+  exploration: false
+  direct: true
+- id: r15-教育脑电数据
+  weight: 85
+  groups:
+  - - 教育脑电数据
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 教育脑电数据
+  exploration: false
+  direct: true
+- id: r16-听觉注意力
+  weight: 85
+  groups:
+  - - 听觉注意力
+    - 听觉训练
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 听觉注意力 OR 听觉训练
+  exploration: false
+  direct: false
+- id: r17-情绪识别
+  weight: 80
+  groups:
+  - - 情绪识别
+    - 情感计算
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 情绪识别 OR 情感计算
+  exploration: false
+  direct: false
+- id: r18-学生情绪监测
+  weight: 80
+  groups:
+  - - 学生情绪监测
+  - - 脑电
+    - 耳机
+    - 可穿戴
+    - EEG
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 学生情绪监测
+  exploration: false
+  direct: false
+- id: r19-认知负荷
+  weight: 80
+  groups:
+  - - 认知负荷
+    - 学习疲劳
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 认知负荷 OR 学习疲劳
+  exploration: false
+  direct: false
+- id: r20-神经反馈
+  weight: 75
+  groups:
+  - - 神经反馈
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 神经反馈
+  exploration: false
+  direct: false
+- id: r21-注意力监测
+  weight: 85
+  groups:
+  - - 注意力监测
+  - - 脑电
+    - 耳机
+    - 可穿戴
+    - EEG
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 注意力监测
+  exploration: false
+  direct: false
+- id: r22-心理健康 教育 可穿戴
+  weight: 75
+  groups:
+  - - 心理健康
+  - - 教育
+  - - 可穿戴
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 心理健康 教育 可穿戴
+  exploration: false
+  direct: false
+- id: r23-强脑科技
+  weight: 90
+  groups:
+  - - 强脑科技
+    - BrainCo
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: 强脑科技 OR BrainCo
+  exploration: false
+  direct: false
+- id: r24-脑陆科技
+  weight: 85
+  groups:
+  - - 脑陆科技
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: 脑陆科技
+  exploration: false
+  direct: false
+- id: r25-博睿康
+  weight: 85
+  groups:
+  - - 博睿康
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 博睿康
+  exploration: false
+  direct: false
+- id: r26-柔灵科技
+  weight: 85
+  groups:
+  - - 柔灵科技
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: 柔灵科技
+  exploration: false
+  direct: false
+- id: r27-Muse
+  weight: 80
+  groups:
+  - - Muse
+  - - EEG
+    - 脑电
+    - 冥想
+    - headband
+    - sleep
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: Muse
+  exploration: false
+  direct: false
+- id: r28-Emotiv
+  weight: 80
+  groups:
+  - - Emotiv
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: Emotiv
+  exploration: false
+  direct: true
+- id: r29-Neurable
+  weight: 80
+  groups:
+  - - Neurable
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: Neurable
+  exploration: false
+  direct: true
+- id: r30-NeuroSky
+  weight: 75
+  groups:
+  - - NeuroSky
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: NeuroSky
+  exploration: false
+  direct: false
+- id: r31-脑电耳机 (发布
+  weight: 90
+  groups:
+  - - 脑电耳机
+    - EEG耳机
+  - - 发布
+    - 众筹
+    - 评测
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 脑电耳机 发布 OR 众筹 OR 评测
+  exploration: false
+  direct: true
+- id: r32-教育智能硬件 脑电
+  weight: 85
+  groups:
+  - - 教育智能硬件
+  - - 脑电
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 教育智能硬件 脑电
+  exploration: false
+  direct: true
+- id: r33-智慧课堂 脑电
+  weight: 80
+  groups:
+  - - 智慧课堂
+  - - 脑电
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 智慧课堂 脑电
+  exploration: false
+  direct: true
+- id: r34-教育信息化 可穿戴
+  weight: 75
+  groups:
+  - - 教育信息化
+  - - 可穿戴
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 教育信息化 可穿戴
+  exploration: false
+  direct: false
+- id: r35-ear-EEG education atte
+  weight: 80
+  groups:
+  - - ear-EEG
+    - 耳周脑电
+  - - education
+    - attention
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: ear-EEG education attention
+  exploration: false
+  direct: true
+- id: r36-auditory attention dec
+  weight: 80
+  groups:
+  - - auditory attention decoding
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  - 学术
+  query: auditory attention decoding
+  exploration: false
+  direct: false
+- id: r37-EEG emotion recognitio
+  weight: 75
+  groups:
+  - - EEG
+  - - emotion recognition
+  - - wearable
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: EEG emotion recognition wearable
+  exploration: false
+  direct: true
+- id: r38-脑机接口 (融资
+  weight: 80
+  groups:
+  - - 脑机接口
+    - BCI
+  - - 融资
+    - 投资
+    - 并购
+    - funding
+  purpose: 识别消费级脑机/相关教育硬件的新公司及融资并购
+  topics:
+  - 资本
+  query: 脑机接口 融资 OR 投资 OR 并购
+  exploration: false
+  direct: true
+- id: r39-脑电 融资
+  weight: 75
+  groups:
+  - - 脑电
+  - - 融资
+  purpose: 识别消费级脑机/相关教育硬件的新公司及融资并购
+  topics:
+  - 资本
+  query: 脑电 融资
+  exploration: false
+  direct: true
+- id: r40-教育科技 (融资
+  weight: 70
+  groups:
+  - - 教育科技
+    - edtech
+  - - 融资
+    - 并购
+    - funding
+  - - 脑电
+    - 耳机
+    - 可穿戴
+    - EEG
+  purpose: 识别消费级脑机/相关教育硬件的新公司及融资并购
+  topics:
+  - 资本
+  query: 教育科技 融资 OR 并购
+  exploration: false
+  direct: false
+- id: r41-EEG芯片
+  weight: 70
+  groups:
+  - - EEG芯片
+    - 生物电AFE
+    - 低功耗SoC
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: EEG芯片 OR 生物电AFE OR 低功耗SoC
+  exploration: false
+  direct: true
+- id: r42-(干电极
+  weight: 70
+  groups:
+  - - 干电极
+    - 耳夹电极
+  - - 供应商
+    - 供应
+    - 制造
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 干电极 OR 耳夹电极 供应商
+  exploration: false
+  direct: false
+- id: r43-教育硬件渠道
+  weight: 70
+  groups:
+  - - 教育硬件渠道
+    - 学校采购
+  - - 脑电
+    - 耳机
+    - 可穿戴
+    - EEG
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 教育硬件渠道 OR 学校采购
+  exploration: false
+  direct: false
+- id: r44-(STEAM教育
+  weight: 65
+  groups:
+  - - STEAM教育
+    - 特教
+  - - 脑电
+    - EEG
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: STEAM教育 OR 特教 脑电
+  exploration: false
+  direct: true
+- id: r45-(NMPA
+  weight: 55
+  groups:
+  - - NMPA
+    - 医疗器械注册
+  - - 脑电
+    - EEG
+    - 脑机
+  purpose: 识别与脑电硬件、神经数据及未成年人相关的监管要求
+  topics:
+  - 政策
+  query: NMPA OR 医疗器械注册 脑电
+  exploration: false
+  direct: true
+- id: r46-(FDA
+  weight: 50
+  groups:
+  - - FDA
+    - CE
+  - - 神经数据
+    - neural data
+  purpose: 识别与脑电硬件、神经数据及未成年人相关的监管要求
+  topics:
+  - 政策
+  query: FDA OR CE 神经数据
+  exploration: false
+  direct: false
+- id: r47-神经数据 (隐私
+  weight: 55
+  groups:
+  - - 神经数据
+    - 脑电数据
+    - 脑机接口
+  - - 隐私
+    - 伦理
+    - 未成年人
+  purpose: 识别与脑电硬件、神经数据及未成年人相关的监管要求
+  topics:
+  - 政策
+  query: 神经数据 隐私 OR 伦理 OR 未成年人
+  exploration: false
+  direct: false
+- id: r48-中国教育装备展 脑机接口
+  weight: 45
+  groups:
+  - - 中国教育装备展
+  - - 脑机接口
+  purpose: 筛选耳机/脑电与教育应用的交叉信息，不看泛教育资讯
+  topics:
+  - 耳机教育
+  query: 中国教育装备展 脑机接口
+  exploration: false
+  direct: true
+- id: r49-WAIC 脑机接口
+  weight: 45
+  groups:
+  - - WAIC
+  - - 脑机接口
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: WAIC 脑机接口
+  exploration: false
+  direct: true
+- id: r50-CES ear-EEG
+  weight: 40
+  groups:
+  - - CES
+  - - ear-EEG
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: CES ear-EEG
+  exploration: false
+  direct: true
+- id: r53-消费级脑电
+  weight: 90
+  groups:
+  - - 消费级脑电
+    - consumer EEG
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 消费级脑电 OR consumer EEG
+  exploration: false
+  direct: true
+- id: r54-脑电 睡眠
+  weight: 85
+  groups:
+  - - 脑电
+  - - 睡眠
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 脑电 睡眠
+  exploration: false
+  direct: true
+- id: r55-头戴式耳机
+  weight: 65
+  groups:
+  - - 头戴式耳机
+    - over-ear headphones
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 头戴式耳机 OR over-ear headphones
+  exploration: false
+  direct: false
+- id: r56-脑韵
+  weight: 80
+  groups:
+  - - 脑韵
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: 脑韵
+  exploration: false
+  direct: true
+- id: r57-NextSense
+  weight: 80
+  groups:
+  - - NextSense
+  purpose: 了解消费级神经技术竞品及新企业的产品、商业进展
+  topics:
+  - 企业
+  query: NextSense
+  exploration: false
+  direct: false
+- id: r58-新型可穿戴神经传感
+  weight: 30
+  groups:
+  - - 新型可穿戴神经传感
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 新型可穿戴神经传感
+  exploration: true
+  direct: false
+- id: r59-柔性生物传感 初创
+  weight: 30
+  groups:
+  - - 柔性生物传感
+  - - 初创
+  purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
+  topics:
+  - 核心
+  query: 柔性生物传感 初创
+  exploration: true
+  direct: false

@@ -1,0 +1,216 @@
+# Important specialist discovery source. Relevance still uses the shared rules/AI.
+- id: bciwiki
+  name: BCIwiki 脑机百科
+  url: https://bciwiki.com/feed/
+  kind: feed
+  group: 科技新闻
+  type: 垂直媒体
+  specialist: true
+  enabled: true
+  category: 行业
+- id: bciwiki-policy
+  name: BCIwiki 脑机百科·政策
+  url: https://bciwiki.com/section/policy/
+  kind: html
+  links: .bw-card__title a
+  specialist: true
+  enabled: true
+  category: 政策
+- id: bciwiki-funding
+  name: BCIwiki 脑机百科·融资
+  url: https://bciwiki.com/section/funding/
+  kind: html
+  links: .bw-card__title a
+  specialist: true
+  enabled: true
+  category: 资本
+- id: stdaily
+  name: 科技日报·中国科技网
+  url: https://www.stdaily.com/
+  kind: search
+  category: 行业
+  enabled: true
+  query: 脑机接口 脑电 耳机 教育 睡眠
+- id: kepuchina
+  name: 科普中国
+  url: https://www.kepuchina.cn/
+  kind: search
+  category: 行业
+  enabled: true
+  query: 脑机接口 脑电 耳机 科普
+- id: deeptech
+  name: DeepTech·MIT科技评论中文网
+  url: https://www.mittrchina.com/
+  kind: search
+  category: 行业
+  enabled: true
+  query: 脑机接口 脑电 神经科技 耳机
+  status: deeptechchina.com跳转至此；静态首页无文章列表，保留站内搜索
+- id: ithome
+  name: IT之家
+  url: https://www.ithome.com/rss/
+  kind: feed
+  type: 行业媒体
+  enabled: true
+  category: 行业
+- id: qbitai
+  name: 量子位
+  url: https://www.qbitai.com/feed
+  kind: feed
+  type: 行业媒体
+  enabled: true
+  category: 行业
+- id: zhidx
+  name: 智东西
+  url: https://zhidx.com/
+  kind: html
+  links: a[href*='/p/']
+  type: 行业媒体
+  enabled: true
+  category: 行业
+- id: verge
+  name: The Verge
+  url: https://www.theverge.com/rss/index.xml
+  kind: feed
+  type: 行业媒体
+  enabled: true
+  reference: https://github.com/datawhalechina/omni-info-radar/blob/main/config/config.yaml
+  category: 行业
+- id: neurable
+  name: Neurable
+  url: https://www.neurable.com/newsroom
+  kind: html
+  links: a[href^='/news/']
+  container: .blog-archive_item, .w-dyn-item
+  company: Neurable
+  type: 企业官网
+  enabled: true
+  category: 行业
+- id: emotiv
+  name: EMOTIV
+  url: https://www.emotiv.com/blog
+  kind: html
+  links: a[href*='/blog/']
+  company: EMOTIV
+  type: 企业官网
+  enabled: true
+  category: 行业
+- id: muse
+  name: Muse
+  url: https://choosemuse.com/blogs/news.atom
+  kind: feed
+  company: Muse
+  type: 企业官网
+  enabled: true
+  category: 行业
+- id: sennheiser
+  name: Sennheiser
+  url: https://newsroom.sennheiser.com/
+  kind: search
+  links: a[href]
+  type: 企业官网
+  enabled: true
+  status: 页面可访问；文章列表响应不稳定
+  category: 行业
+  query: Sennheiser 脑电 耳机 新品
+- id: gov
+  name: 中国政府网·最新政策
+  url: https://www.gov.cn/zhengce/zuixin/ZUIXINZHENGCE.json
+  kind: gov_json
+  category: 政策
+  type: 政府官网
+  enabled: true
+- id: moe
+  name: 教育部·中央文件
+  url: https://www.moe.gov.cn/jyb_xxgk/moe_1777/moe_1778/
+  kind: html
+  links: a[href*='/t20'], a[href^='./20']
+  category: 政策
+  type: 政府官网
+  enabled: true
+- id: stcn
+  name: 证券时报·创投
+  url: https://www.stcn.com/chuangtou/index.html
+  kind: html
+  links: a[href*='/article/detail/']
+  type: 财经媒体
+  enabled: true
+  category: 行业
+- id: pedaily
+  name: 投资界
+  url: https://www.pedaily.cn/
+  kind: html
+  links: a[href*='news.pedaily.cn/']
+  type: 财经媒体
+  enabled: true
+  category: 行业
+- id: nimbus
+  name: Nimbus BCI Digest
+  url: https://www.nimbusbci.com/blog
+  kind: html
+  links: a[href^='/blog/']
+  type: 垂直媒体
+  enabled: true
+  category: 行业
+- id: bciintel
+  name: BCI Intel
+  url: https://bciintel.com/news/
+  kind: html
+  links: a[href^='/news/']
+  type: 垂直媒体
+  enabled: true
+  category: 行业
+- id: arxiv
+  name: arXiv
+  url: https://export.arxiv.org/api/query
+  kind: arxiv
+  type: 学术平台
+  enabled: true
+  category: 学术
+- id: 36kr
+  name: 36氪
+  url: https://36kr.com/feed
+  kind: search
+  type: 行业媒体
+  enabled: true
+  status: 返回安全检测页；保留搜索补充
+  category: 行业
+  query: 36氪 脑电 耳机 新品
+- id: brainco
+  name: BrainCo 强脑科技
+  url: https://www.brainco.cn/news/
+  kind: search
+  type: 企业官网
+  enabled: true
+  status: 静态响应没有新闻条目；保留公司名搜索
+  category: 行业
+  query: BrainCo 强脑科技 脑电 耳机 新品
+- id: sony
+  name: Sony 新闻中心
+  url: https://www.sony.com/en/SonyInfo/News/Press/
+  kind: search
+  type: 企业官网
+  enabled: true
+  status: HTTP 403；未接入
+  category: 行业
+  query: Sony 新闻中心 脑电 耳机 新品
+- id: nmpa
+  name: 国家药品监督管理局
+  url: https://www.nmpa.gov.cn/
+  kind: search
+  category: 政策
+  enabled: true
+  query: 脑机接口 脑电 神经数据 医疗器械 指导原则
+# Entries below passed list + one article-page reading on 2026-09-17.
+# Group is discovery organization, not the final brief's category or relevance.
+- {id: audio52, name: 我爱音频网, group: 科技新闻, url: 'https://www.52audio.com/feed', kind: feed, category: 行业, enabled: true}
+- {id: techcrunch, name: TechCrunch, group: 科技新闻, url: 'https://techcrunch.com/feed/', kind: feed, category: 行业, enabled: true}
+- {id: spectrum, name: IEEE Spectrum, group: 科技新闻, url: 'https://spectrum.ieee.org/feeds/feed.rss', kind: feed, category: 行业, enabled: true}
+- {id: microsoft-research, name: Microsoft Research, group: 大厂博客, url: 'https://www.microsoft.com/en-us/research/feed/', kind: feed, category: 行业, enabled: true}
+- {id: deepmind, name: Google DeepMind, group: 大厂博客, url: 'https://deepmind.google/blog/rss.xml', kind: feed, category: 行业, enabled: false, status: 未确认足够直接的脑电内容，暂留候选}
+- {id: nature-neuro, name: Nature Neuroscience, group: 学术论文, url: 'https://www.nature.com/neuro.rss', kind: feed, category: 学术, enabled: true}
+- {id: neurosity, name: Neurosity, group: 产品更新, url: 'https://neurosity.co/blog', kind: html, links: "a[href*='/blog/']", company: Neurosity, category: 行业, enabled: true}
+- {id: brainflow, name: BrainFlow版本更新, group: 产品更新, url: 'https://github.com/brainflow-dev/brainflow/releases.atom', kind: feed, category: 行业, enabled: true}
+- {id: miit-wap, name: 工信部·政务公开移动版, group: 政策资讯, url: 'https://wap.miit.gov.cn/zwgk/', kind: html, links: "a[href*='/art/']", category: 政策, enabled: true}
+- {id: chinaventure, name: 投中网, group: 融资来源, url: 'https://www.chinaventure.com.cn/', kind: html, links: "a[href*='/news/']", category: 行业, enabled: true}
+- {id: eastmoney, name: 东方财富·财经, group: 融资来源, url: 'https://finance.eastmoney.com/', kind: html, links: "a[href*='finance.eastmoney.com/a/']", category: 行业, enabled: true}

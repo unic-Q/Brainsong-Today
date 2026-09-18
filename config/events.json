@@ -1,0 +1,281 @@
+[
+  {
+    "name": "CES 2027",
+    "kind": "展览",
+    "date": "2027-01-06",
+    "end": "2027-01-09",
+    "place": "拉斯维加斯",
+    "basis": "已有资料",
+    "url": "https://www.ces.tech"
+  },
+  {
+    "name": "香港电子产品展 · 春季／秋季",
+    "kind": "秋季展览",
+    "date": "2026-10-13",
+    "end": "2026-10-16",
+    "place": "香港会议展览中心",
+    "basis": "已有资料",
+    "url": "https://www.hktdc.com/event/hkelectronicsfairse/sc"
+  },
+  {
+    "name": "香港电子产品展 · 春季／秋季",
+    "kind": "春季报名截止",
+    "date": "2026-10-30",
+    "end": "2026-10-30",
+    "place": "香港会议展览中心",
+    "basis": "已有资料",
+    "url": "https://www.hktdc.com/event/hkelectronicsfairse/sc"
+  },
+  {
+    "name": "香港电子产品展 · 春季／秋季",
+    "kind": "春季展览",
+    "date": "2027-04-13",
+    "end": "2027-04-16",
+    "place": "香港会议展览中心",
+    "basis": "已有资料",
+    "url": "https://www.hktdc.com/event/hkelectronicsfairse/sc"
+  },
+  {
+    "name": "香港电子产品展 · 秋季",
+    "kind": "展览",
+    "date": "2026-10-13",
+    "end": "2026-10-16",
+    "place": "香港会议展览中心",
+    "basis": "已有资料",
+    "url": "https://www.hktdc.com/event/hkelectronicsfairae/sc"
+  },
+  {
+    "name": "环球资源香港展 · 春季／秋季",
+    "kind": "秋季一期／二期",
+    "date": "2026-10-11",
+    "end": "2026-10-14",
+    "place": "亚洲国际博览馆",
+    "basis": "已有资料",
+    "url": "https://www.globalsources.com/hong-kong-show/about/"
+  },
+  {
+    "name": "环球资源香港展 · 春季／秋季",
+    "kind": "秋季二期",
+    "date": "2026-10-18",
+    "end": "2026-10-21",
+    "place": "亚洲国际博览馆",
+    "basis": "已有资料",
+    "url": "https://www.globalsources.com/hong-kong-show/about/"
+  },
+  {
+    "name": "环球资源香港展 · 春季／秋季",
+    "kind": "春季一期／二期",
+    "date": "2027-04-11",
+    "end": "2027-04-14",
+    "place": "亚洲国际博览馆",
+    "basis": "计划参考",
+    "url": "https://www.globalsources.com/hong-kong-show/about/"
+  },
+  {
+    "name": "环球资源香港展 · 春季／秋季",
+    "kind": "春季二期",
+    "date": "2027-04-18",
+    "end": "2027-04-21",
+    "place": "亚洲国际博览馆",
+    "basis": "计划参考",
+    "url": "https://www.globalsources.com/hong-kong-show/about/"
+  },
+  {
+    "name": "环球资源香港展 · 春季",
+    "kind": "一期｜计划",
+    "date": "2027-04-11",
+    "end": "2027-04-14",
+    "place": "亚洲国际博览馆",
+    "basis": "计划参考",
+    "url": "https://www.globalsources.com/hong-kong-show/about/"
+  },
+  {
+    "name": "环球资源香港展 · 春季",
+    "kind": "二期｜计划",
+    "date": "2027-04-18",
+    "end": "2027-04-21",
+    "place": "亚洲国际博览馆",
+    "basis": "计划参考",
+    "url": "https://www.globalsources.com/hong-kong-show/about/"
+  },
+  {
+    "name": "MWC Barcelona 2027",
+    "kind": "展览",
+    "date": "2027-03-01",
+    "end": "2027-03-04",
+    "place": "巴塞罗那 Fira Gran Via",
+    "basis": "已有资料",
+    "url": "https://www.mwcbarcelona.com"
+  },
+  {
+    "name": "MWC Shanghai 2027",
+    "kind": "展览",
+    "date": "2027-06-23",
+    "end": "2027-06-25",
+    "place": "上海",
+    "basis": "已有资料",
+    "url": "https://www.mwcshanghai.cn"
+  },
+  {
+    "name": "AWE 2027 中国家电及消费电子博览会",
+    "kind": "展览",
+    "date": "2027-03-17",
+    "end": "2027-03-20",
+    "place": "上海",
+    "basis": "已有资料",
+    "url": "https://www.awe.com.cn"
+  },
+  {
+    "name": "WAIC 世界人工智能大会",
+    "kind": "展览",
+    "date": "2027-07-17",
+    "end": "2027-07-20",
+    "place": "上海",
+    "basis": "计划参考",
+    "url": "https://www.worldaic.com.cn"
+  },
+  {
+    "name": "CSITF 上交会",
+    "kind": "渠道申报截止",
+    "date": "2027-03-18",
+    "end": "2027-03-18",
+    "place": "上海世博展览馆（历届）",
+    "basis": "计划参考",
+    "url": "https://www.csitf.com/"
+  },
+  {
+    "name": "CSITF 上交会",
+    "kind": "展览",
+    "date": "2027-06-11",
+    "end": "2027-06-13",
+    "place": "上海世博展览馆（历届）",
+    "basis": "计划参考",
+    "url": "https://www.csitf.com/"
+  },
+  {
+    "name": "IFA Berlin 2027",
+    "kind": "展览",
+    "date": "2027-09-03",
+    "end": "2027-09-07",
+    "place": "柏林 Messe Berlin",
+    "basis": "已有资料",
+    "url": "https://www.ifa-berlin.com/"
+  },
+  {
+    "name": "中国国际福祉博览会 CRexpo",
+    "kind": "展览",
+    "date": "2027-09-03",
+    "end": "2027-09-05",
+    "place": "北京国家会议中心（历届）",
+    "basis": "计划参考",
+    "url": "https://www.crexpo.cn"
+  },
+  {
+    "name": "第88届中国教育装备展示会",
+    "kind": "布展／报到",
+    "date": "2026-10-27",
+    "end": "2026-10-29",
+    "place": "长沙国际会展中心",
+    "basis": "已有资料",
+    "url": "http://www.ceiea.com/zt/88/"
+  },
+  {
+    "name": "亚洲教育装备博览会 2026",
+    "kind": "布展",
+    "date": "2026-09-13",
+    "end": "2026-09-14",
+    "place": "杭州大会展中心",
+    "basis": "已有资料",
+    "url": "https://www.ceeia.cn/news/detail_4115.htm"
+  },
+  {
+    "name": "亚洲教育装备博览会 2026",
+    "kind": "展览",
+    "date": "2026-09-15",
+    "end": "2026-09-17",
+    "place": "杭州大会展中心",
+    "basis": "已有资料",
+    "url": "https://www.ceeia.cn/news/detail_4115.htm"
+  },
+  {
+    "name": "北京教育装备展示会 · 2027*",
+    "kind": "报名截止",
+    "date": "2027-03-21",
+    "end": "2027-03-21",
+    "place": "北京展览馆（2026参考）",
+    "basis": "计划参考",
+    "url": "https://cmee-online.com"
+  },
+  {
+    "name": "北京教育装备展示会 · 2027*",
+    "kind": "布展",
+    "date": "2027-04-06",
+    "end": "2027-04-07",
+    "place": "北京展览馆（2026参考）",
+    "basis": "计划参考",
+    "url": "https://cmee-online.com"
+  },
+  {
+    "name": "北京教育装备展示会 · 2027*",
+    "kind": "展览",
+    "date": "2027-04-08",
+    "end": "2027-04-10",
+    "place": "北京展览馆（2026参考）",
+    "basis": "计划参考",
+    "url": "https://cmee-online.com"
+  },
+  {
+    "name": "Bett UK 2027",
+    "kind": "展览",
+    "date": "2027-01-20",
+    "end": "2027-01-22",
+    "place": "伦敦 ExCeL",
+    "basis": "已有资料",
+    "url": "https://uk.bettshow.com"
+  },
+  {
+    "name": "CES Asia · 北京",
+    "kind": "展览",
+    "date": "2026-06-10",
+    "end": "2026-06-12",
+    "place": "北京亦创国际会展中心",
+    "basis": "已有资料",
+    "url": ""
+  },
+  {
+    "name": "CEATEC 2026",
+    "kind": "展览",
+    "date": "2026-10-13",
+    "end": "2026-10-16",
+    "place": "千叶幕张国际会展中心",
+    "basis": "已有资料",
+    "url": "https://www.ceatec.com/en/"
+  },
+  {
+    "name": "WEARABLE／Wearable World 2027",
+    "kind": "展览",
+    "date": "2027-02-17",
+    "end": "2027-02-19",
+    "place": "东京有明国际会展中心",
+    "basis": "已有资料",
+    "url": "https://www.fiweek.jp/tokyo/ja-jp/conference/wearableworld.html"
+  },
+  {
+    "name": "NEPCON JAPAN 2027 · 东京",
+    "kind": "东京展览",
+    "date": "2027-02-17",
+    "end": "2027-02-19",
+    "place": "东京有明国际会展中心",
+    "basis": "已有资料",
+    "url": "https://www.nepconjapan.jp/tokyo/en-gb.html"
+  },
+  {
+    "name": "KES 韩国电子展 2026",
+    "kind": "展览",
+    "date": "2026-10-13",
+    "end": "2026-10-16",
+    "place": "首尔 COEX，A／B馆",
+    "basis": "已有资料",
+    "url": "https://www.kes.org/eng/"
+  }
+]

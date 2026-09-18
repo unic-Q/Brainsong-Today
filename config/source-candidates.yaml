@@ -1,0 +1,21 @@
+# Candidates are not production-enabled until entry parsing has been tested.
+- {id: audio52, name: 我爱音频网, group: 科技新闻, url: 'https://www.52audio.com/feed', kind: feed, category: 行业}
+- {id: techcrunch, name: TechCrunch, group: 科技新闻, url: 'https://techcrunch.com/feed/', kind: feed, category: 行业}
+- {id: spectrum, name: IEEE Spectrum, group: 科技新闻, url: 'https://spectrum.ieee.org/feeds/feed.rss', kind: feed, category: 行业}
+- {id: google-research, name: Google Research, group: 大厂博客, url: 'https://research.google/blog/rss/', kind: feed, category: 行业}
+- {id: microsoft-research, name: Microsoft Research, group: 大厂博客, url: 'https://www.microsoft.com/en-us/research/feed/', kind: feed, category: 行业}
+- {id: deepmind, name: Google DeepMind, group: 大厂博客, url: 'https://deepmind.google/blog/rss.xml', kind: feed, category: 行业}
+- {id: arxiv-neuro-rss, name: arXiv神经科学·人机交互·信号处理, group: 学术论文, url: 'https://rss.arxiv.org/rss/q-bio.NC+cs.HC+eess.SP', kind: feed, category: 学术}
+- {id: jne, name: Journal of Neural Engineering, group: 学术论文, url: 'https://iopscience.iop.org/journal/rss/1741-2552', kind: feed, category: 学术}
+- {id: nature-neuro, name: Nature Neuroscience, group: 学术论文, url: 'https://www.nature.com/neuro.rss', kind: feed, category: 学术}
+- {id: neurosity, name: Neurosity, group: 产品更新, url: 'https://neurosity.co/blog', kind: html, links: "a[href*='/blog/']", company: Neurosity, category: 行业}
+- {id: openbci, name: OpenBCI, group: 产品更新, url: 'https://openbci.com/community/feed/', kind: feed, category: 行业}
+- {id: brainflow, name: BrainFlow版本更新, group: 产品更新, url: 'https://github.com/brainflow-dev/brainflow/releases.atom', kind: feed, category: 行业}
+- {id: mne, name: MNE-Python版本更新, group: 产品更新, url: 'https://github.com/mne-tools/mne-python/releases.atom', kind: feed, category: 学术}
+- {id: miit, name: 工信部·文件公示, group: 政策资讯, url: 'https://www.miit.gov.cn/zwgk/wjgs/index.html', kind: html, links: "a[href*='/art/']", category: 政策}
+- {id: miit-wap, name: 工信部·政务公开移动版, group: 政策资讯, url: 'https://wap.miit.gov.cn/zwgk/', kind: html, links: "a[href*='/art/']", category: 政策}
+- {id: caict, name: 中国信通院·白皮书, group: 政策资讯, url: 'https://www.caict.ac.cn/kxyj/qwfb/bps/', kind: html, links: "a[href*='/t20']", category: 行业}
+- {id: chinaventure, name: 投中网, group: 融资来源, url: 'https://www.chinaventure.com.cn/', kind: html, links: "a[href*='/news/']", category: 行业}
+- {id: vcbeat, name: 动脉网, group: 融资来源, url: 'https://www.vcbeat.top/', kind: html, links: "a[href*='vbdata.cn/'][href$='.html']", category: 行业}
+- {id: 36kr-feed, name: 36氪RSS重测, group: 融资来源, url: 'https://36kr.com/feed', kind: feed, category: 行业}
+- {id: bing-news, name: Bing新闻RSS补充, group: 全网补充, url: 'https://www.bing.com/news/search?q=%E8%84%91%E6%9C%BA%E6%8E%A5%E5%8F%A3&format=rss&setlang=zh-cn', kind: feed, category: 行业}

@@ -1,0 +1,3 @@
+# Known public article URLs only. Search-discovered WeChat URLs use the same parser.
+# No mptext key, login cookies or account-history API.
+article_urls: []
