@@ -1,5 +1,6 @@
 import argparse
 import json
+import signal
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -19,10 +20,18 @@ def main():
     parser.add_argument("--cached-only", action="store_true", help="只补分析缓存候选，不执行信源列表采集或常规搜索")
     args = parser.parse_args()
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    # Actions cancellation sends SIGINT then SIGTERM. Unwind the pipeline's
+    # finally block so completed diagnostics and candidates can be uploaded.
+    def cancelled(signum, frame):
+        raise SystemExit(130)
+    previous = {sig: signal.signal(sig, cancelled) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
         result = run(args.root, today, offline=args.offline, no_ai=args.no_ai, send=args.send,
                      fixture=Path(args.root) / args.fixture, state_path=args.state, resume=args.resume, cached_only=args.cached_only)
         print(json.dumps(result, ensure_ascii=False))
+        if args.send and not result['sent']:
+            print('未完成发送，请查看候选数量和发送记录；本次任务不标记成功。', flush=True)
+            raise SystemExit(2)
     except Exception as exc:
         logs = Path(args.root) / "logs"
         logs.mkdir(parents=True, exist_ok=True)
@@ -30,6 +39,9 @@ def main():
             handle.write(f"\n{today} | fatal | {type(exc).__name__}\n")
         print("运行未完成，错误类型：" + type(exc).__name__ + "。请查看logs和state，不输出密钥或服务器响应。")
         raise SystemExit(1) from None
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 if __name__ == "__main__":

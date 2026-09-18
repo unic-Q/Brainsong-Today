@@ -13,6 +13,10 @@ on:
         description: "发送飞书；不勾选仅预览（仍调用官方搜索及AI）"
         type: boolean
         default: false
+      cached_only:
+        description: "复用已保存候选继续分析，不重抓信源或执行常规搜索；补正文仍可能联网及调用API"
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -33,7 +37,7 @@ jobs:
       - name: Install locked environment
         run: uv sync --frozen --extra dev
       - name: Offline regression tests
-        run: uv run pytest tests/test_brainsong.py -q
+        run: uv run pytest tests/test_brainsong.py tests/test_cloud_batches.py -q
       - name: Restore persistent history
         id: restore
         env:
@@ -48,13 +52,14 @@ jobs:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           SEND_BRIEF: ${{ github.event_name == 'schedule' || inputs.send }}
+          CACHED_ONLY: ${{ inputs.cached_only }}
+          PYTHONUNBUFFERED: "1"
         shell: bash
         run: |
-          if [ "$SEND_BRIEF" = "true" ]; then
-            uv run brainsong-today --send
-          else
-            uv run brainsong-today
-          fi
+          args=()
+          if [ "$SEND_BRIEF" = "true" ]; then args+=(--send); fi
+          if [ "$CACHED_ONLY" = "true" ]; then args+=(--cached-only); fi
+          uv run brainsong-today "${args[@]}"
       - name: Preserve history even after delivery failure
         if: always() && steps.restore.outcome == 'success'
         uses: actions/upload-artifact@v4

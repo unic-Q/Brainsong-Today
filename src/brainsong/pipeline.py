@@ -14,6 +14,7 @@ from .model import Article, digest, ranking_score, freshness_factor, policy_auth
 from .provider import OfficialGLM
 from .secrets import api_key
 from .state import State
+from .progress import Progress
 
 
 def load(root):
@@ -53,6 +54,118 @@ def queries(rules, cfg, today):
     return result
 
 
+def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
+    if not offline and not usable_summary(item.summary, item.title) and len(item.body) < cfg['short_body_chars']:
+        try:
+            extras = from_search(provider.search(item.title[:70]))
+            compatible = [a for a in merge([item] + extras) if a.url == item.url]
+            if compatible:
+                item.summary, item.body, item.sources = compatible[0].summary, compatible[0].body, compatible[0].sources
+            if not usable_summary(item.summary, item.title):
+                for source in item.sources[1:3]:
+                    other = Article(item.title, source['url'], item.published, source['name'])
+                    metadata(other, reader.get(source['url']))
+                    item.summary = item.summary or other.summary
+                    item.body = max([item.body, other.body], key=len)
+        except Exception as exc:
+            state.error(today, '短文补搜', exc)
+    if offline or no_ai:
+        from .editor import short_text
+        item.summary = short_text(item.summary or item.body)
+    else:
+        summarize(item, provider, state, today)
+    if offline or no_ai or display_summary(item.summary, item.title):
+        if not offline and not no_ai:
+            compact_title(item, provider, state, today)
+        return True
+    return False
+
+
+def process_candidates(items, cfg, rules, exclusions, state, provider, reader, today,
+                       progress, *, offline=False, no_ai=False):
+    """Retain everything; spend enrichment and AI work only on priority batches."""
+    pool = merge(items)
+    queue = []
+    for item in pool:
+        if not prepare(item, rules, exclusions) or state.sent(item):
+            continue
+        # Dates already known to be outside the window need no page request.
+        if item.published and not item.in_window(today, cfg['windows']):
+            continue
+        queue.append(item)
+    queue.sort(key=lambda a: (a.exploration, -ranking_score(a, today),
+                             a.category == '学术', a.category != '政策', a.identity))
+    counts = state.get('counts', {'total': 0, 'exploration': 0})
+    allowance = int((counts['total'] + cfg['max_items']) * cfg['exploration_ratio']) - counts['exploration']
+    if allowance > 0:
+        # Give the due exploration slot a chance before the early stop. It
+        # still requires relevance approval and never becomes a forced filler.
+        discovery = next((a for a in queue if a.exploration), None)
+        if discovery is not None:
+            queue.remove(discovery)
+            queue.insert(0, discovery)
+    progress('candidate queue', retained=len(pool), eligible=len(queue))
+    ai = cfg['ai']['enabled'] and not offline and not no_ai
+    history = [a for a in state.recent(today) if a.accepted and
+               a.in_window(today, cfg['windows']) and state.sent(a)] if ai else []
+    accepted, picks, rejected = [], [], set()
+    batch_size = min(6, max(1, cfg['ai']['batch_size']))
+    cursor = 0
+    while cursor < len(queue) and len(picks) < cfg['max_items']:
+        raw = queue[cursor:cursor+batch_size]
+        cursor += len(raw)
+        progress('batch start', processed=cursor, total=len(queue), ready=len(picks))
+        batch = []
+        for offset, item in enumerate(raw, 1):
+            if item.category == '学术' and sum(a.category == '学术' for a in picks) >= cfg.get('max_academic_items', 2):
+                continue
+            if not offline and ((not item.published and item.matches) or
+                                (item.published and not usable_summary(item.summary, item.title) and not item.body)):
+                progress('article read', article=cursor-len(raw)+offset)
+                try:
+                    metadata(item, reader.get(item.url))
+                except Exception as exc:
+                    state.error(today, '文章读取:' + item.url, exc)
+            if not offline:
+                state.retain_candidates([item], today)
+            if not item.published:
+                state.error(today, '文章日期:' + item.url, 'missing_date')
+                continue
+            if prepare(item, rules, exclusions) and item.in_window(today, cfg['windows']):
+                batch.append(item)
+        accepted.extend(relevance_filter(batch, provider, cfg, rules, state, today) if ai
+                        else [a for a in batch if a.accepted])
+        if ai and batch:
+            accepted = merge_event_reports(history + accepted, provider, state, today)
+            # History is only a duplicate reference, not a new output candidate.
+            accepted = [a for a in accepted if not state.sent(a)]
+        # Re-rank all assessed candidates, reusing valid summaries from earlier batches.
+        picks = []
+        while True:
+            selected = select([a for a in accepted if a.identity not in rejected], state, today, cfg)
+            if not selected:
+                picks = []
+                break
+            picks, failed = [], False
+            for item in selected:
+                progress('summary start', ready=len(picks))
+                if finish_item(item, cfg, state, provider, reader, today,
+                               offline=offline, no_ai=no_ai or not cfg['ai']['enabled']):
+                    picks.append(item)
+                    state.save(item)
+                else:
+                    rejected.add(item.identity)
+                    failed = True
+            if not failed:
+                break
+        # Preserve every completed score even if a later batch is cancelled.
+        for item in batch:
+            state.save(item)
+        progress('batch complete', processed=cursor, accepted=len(accepted), ready=len(picks))
+    progress('selection complete', processed=cursor, deferred=len(queue)-cursor, ready=len(picks))
+    return pool, picks
+
+
 def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, state_path=None, resume=False, cached_only=False):
     root = Path(root)
     cfg, policy, sources, events = load(root)
@@ -63,6 +176,9 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
     state = State(state_path)
     provider = OfficialGLM("" if offline else api_key(), cfg["ai"]["model"])
     reader = Reader()
+    progress = Progress(root / 'logs' / f'{today}-progress.log')
+    state.progress = provider.progress = progress
+    progress('run start', cached_only=cached_only, resume=resume, send=send)
     source_stats = []
     try:
         if not offline and not provider.key and (cfg["ai"]["enabled"] or cfg["search_enabled"]):
@@ -89,6 +205,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
             for source in sources:
                 if not source.get("enabled", True):
                     continue
+                progress('source start ' + source['id'])
                 try:
                     if source["kind"] == "search":
                         rows = provider.search(source.get("query", "脑机接口 脑电 耳机 教育"), urlsplit(source["url"]).hostname,
@@ -104,6 +221,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                              "dated": sum(bool(a.published) for a in collected)})
                 except Exception as exc:
                     state.error(today, "信源:" + source["id"], exc)
+                progress('source complete ' + source['id'], candidates=len(items))
             if cfg.get("wechat_enabled", False):
                 try:
                     collected = collect_wechat(root, reader, today)
@@ -136,87 +254,14 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         items.extend(collected)
                     except Exception as exc:
                         state.error(today, "搜索:" + topic, exc)
-        # First dedup before fetching or AI, then after enriching metadata.
-        candidates = merge(items + state.candidates() + state.recent(today))
-        filtered = []
-        for item in candidates:
-            if not prepare(item, rules, exclusions):
-                continue
-            if not offline and ((not item.published and item.matches) or
-                                (item.published and not usable_summary(item.summary, item.title) and not item.body)):
-                try:
-                    metadata(item, reader.get(item.url))
-                except Exception as exc:
-                    state.error(today, "文章读取:" + item.url, exc)
-            if not item.published:
-                state.error(today, "文章日期:" + item.url, "missing_date")
-                continue
-            if not prepare(item, rules, exclusions) or not item.in_window(today, cfg["windows"]):
-                continue
-            if not offline:
-                state.retain_candidates([item], today)
-            if not state.sent(item):
-                filtered.append(item)
-        candidates = merge(filtered)
-        candidates.sort(key=lambda a: (ranking_score(a, today), a.published), reverse=True)
-        # Keep the entire candidate pool for refill; no destructive shortlist.
-        pool = candidates
-        policies = [a for a in pool if a.category == "政策"]
-        regular = [a for a in pool if a.category != "政策" and not a.exploration]
-        exploration = [a for a in pool if a.exploration and a.category != "政策"]
-        # Do not let papers consume the assessment pool before industry/capital is considered.
-        regular.sort(key=lambda a: (a.category == '学术', -a.score))
-        candidates = policies + regular + exploration
-        if cfg["ai"]["enabled"] and not offline and not no_ai:
-            candidates = relevance_filter(candidates, provider, cfg, rules, state, today)
-            # Previously delivered events act only as duplicate references. Once
-            # merged, their sent URL aliases suppress reprints with new headlines.
-            history = [a for a in state.recent(today) if a.accepted and
-                       a.in_window(today, cfg['windows']) and state.sent(a)]
-            candidates = merge_event_reports(history + candidates, provider, state, today)
-        picks = []
-        rejected = set()
-        pending = select(candidates, state, today, cfg)
-        while pending:
-            item = pending.pop(0)
-            if item.category == "学术" and sum(a.category == "学术" for a in picks) >= cfg.get("max_academic_items", 2):
-                rejected.add(item.identity)
-                continue
-            if not offline and not usable_summary(item.summary, item.title) and len(item.body) < cfg["short_body_chars"]:
-                try:
-                    extras = from_search(provider.search(item.title[:70]))
-                    compatible = [a for a in merge([item] + extras) if a.url == item.url]
-                    if compatible:
-                        item.summary, item.body, item.sources = compatible[0].summary, compatible[0].body, compatible[0].sources
-                    if not usable_summary(item.summary, item.title):
-                        # Broader search is not evidence of the same event. Only
-                        # merged sources may supply text to this item's summary.
-                        for source in item.sources[1:3]:
-                            other = Article(item.title, source["url"], item.published, source["name"])
-                            metadata(other, reader.get(source["url"]))
-                            item.summary = item.summary or other.summary
-                            item.body = max([item.body, other.body], key=len)
-                except Exception as exc:
-                    state.error(today, "短文补搜", exc)
-            if offline or no_ai:
-                from .editor import short_text
-                item.summary = short_text(item.summary or item.body)
-            else:
-                summarize(item, provider, state, today)
-            if offline or no_ai or display_summary(item.summary, item.title):
-                if not offline and not no_ai:
-                    compact_title(item, provider, state, today)
-                picks.append(item)
-            else:
-                rejected.add(item.identity)
-            if not pending and len(picks) < cfg["max_items"]:
-                remaining = select([a for a in candidates if a.identity not in rejected], state, today, cfg)
-                picked_ids = {a.identity for a in picks}
-                pending = [a for a in remaining if a.identity not in picked_ids][:cfg["max_items"]-len(picks)]
+        pool, picks = process_candidates(items + state.candidates() + state.recent(today),
+                                         cfg, rules, exclusions, state, provider, reader, today,
+                                         progress, offline=offline, no_ai=no_ai)
         picks.sort(key=lambda a: (ranking_score(a, today), a.published), reverse=True)
         for item in pool:
             state.save(item)
         visible_events = verify_events(events, today, provider, reader, state, offline=offline or no_ai or resume or cached_only)
+        progress('render', items=len(picks), events=len(visible_events))
         title, body = render(picks, visible_events, today)
         out = root / "reports" / today.isoformat() / ("offline-preview" if offline else "live-preview")
         out.mkdir(parents=True, exist_ok=True)
@@ -240,6 +285,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
             if state.get(delivery_key) not in {"pending", "sent"}:
                 state.put(delivery_key, "pending")
                 state.mark(picks, today, "pending")
+                progress('Feishu send start', items=len(picks))
                 result = FeishuPusher(webhook).send(title, body)
                 if result.success:
                     state.mark(picks, today, "sent")
@@ -249,6 +295,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                          "exploration": count["exploration"] + sum(a.exploration for a in picks)})
                     delivered = True
                     state.release_candidates(today)
+                    progress('Feishu send complete', items=len(picks))
                 else:
                     state.error(today, "飞书发送", "failed_or_uncertain_requires_review")
                     raise RuntimeError("飞书发送失败或状态未知，详见本地记录")

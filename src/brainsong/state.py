@@ -8,6 +8,7 @@ from .model import Article
 
 class State:
     def __init__(self, path):
+        self.progress = None
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.executescript("""
@@ -101,6 +102,8 @@ class State:
         self.db.execute("INSERT INTO errors(day,stage,detail) VALUES (?,?,?)",
                         (today.isoformat(), stage[:100], detail))
         self.db.commit()
+        if self.progress:
+            self.progress('error ' + stage.split(':', 1)[0] + ' ' + detail.split(' ', 1)[0])
 
     def prune(self, today):
         self.db.execute("DELETE FROM candidate_inputs WHERE released IS NOT NULL AND released<? AND json_extract(payload,'$.category')!='政策'",

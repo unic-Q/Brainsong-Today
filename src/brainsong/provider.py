@@ -27,14 +27,24 @@ class OfficialGLM:
         self.calls = {"search": 0, "chat": 0}
         self.usage = {"prompt_tokens": 0, "completion_tokens": 0}
         self.diagnostics = []
+        self.progress = None
 
     def post(self, url, payload, kind):
         if not self.key:
             raise RuntimeError("缺少智谱官方密钥")
         self.calls[kind] += 1
-        response = self.client.post(url, headers={"Authorization": "Bearer " + self.key}, json=payload)
-        response.raise_for_status()
-        data = response.json()
+        if self.progress:
+            self.progress('API ' + kind + ' start', call=self.calls[kind])
+        try:
+            response = self.client.post(url, headers={"Authorization": "Bearer " + self.key}, json=payload)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            if self.progress:
+                self.progress('API ' + kind + ' failed ' + type(exc).__name__)
+            raise
+        if self.progress:
+            self.progress('API ' + kind + ' complete', call=self.calls[kind])
         if "error" in data:
             raise ValueError("官方API返回业务错误")
         for key in self.usage:
