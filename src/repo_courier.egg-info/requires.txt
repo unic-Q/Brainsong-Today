@@ -1,0 +1,16 @@
+beautifulsoup4<5,>=4.12
+httpx<1,>=0.27
+json-repair<1,>=0.30
+PyYAML<7,>=6
+tiktoken<1,>=0.7
+
+[:sys_platform == "win32"]
+tzdata>=2025.2
+
+[dev]
+pytest<10,>=9.0.3
+ruff<1,>=0.5
+
+[web]
+fastapi<1,>=0.115
+uvicorn<1,>=0.30

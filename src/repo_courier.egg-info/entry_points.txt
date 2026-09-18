@@ -1,0 +1,4 @@
+[console_scripts]
+brainsong-today = brainsong.cli:main
+repo-courier = repo_courier.cli:main
+repo-courier-web = repo_courier.web:main
