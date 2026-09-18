@@ -81,11 +81,12 @@ def test_score_first_seven_cap_and_two_events(tmp_path):
     items = [article(i, score=100) for i in range(8)]
     items[-1].category, items[-1].score = "政策", 55
     picks = select(items, state, DAY, cfg)
-    assert len(picks) == 7 and all(a.score == 100 for a in picks)
+    assert len(picks) == 4
+    assert sum(a.category == '行业' for a in picks) == 3
     events = [{"name": "测试展", "date": "2026-09-20", "place": "上海", "kind": "开展", "url": "https://example.org"}]*3
     title, body = render(picks, events, DAY)
     assert title == "Brainsong Today | 2026-09-17"
-    assert body.count("[展会]") == 2 and "每日简报" not in body and "推荐理由" not in body
+    assert body.count("[展会]") == 3 and "每日简报" not in body and "推荐理由" not in body
     state.close()
 
 
@@ -224,7 +225,9 @@ def test_exploration_does_not_displace_policy(tmp_path):
     state.put('counts', {'total':100,'exploration':0})
     rows = [article(i, category='政策', score=60) for i in range(7)]
     rows.append(article(7, exploration=True, score=100))
-    assert all(a.category == '政策' for a in select(rows, state, DAY, cfg))
+    picks = select(rows, state, DAY, cfg)
+    assert sum(a.category == '政策' for a in picks) <= 3
+    assert any(a.exploration for a in picks)
     state.close()
 
 

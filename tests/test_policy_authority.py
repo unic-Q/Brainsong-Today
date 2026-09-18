@@ -15,11 +15,11 @@ def item(url, age=100):
 def test_authority_and_window():
     national = item('https://www.nmpa.gov.cn/a')
     assert policy_authority(national) == 1
-    assert ranking_score(national, DAY) == 94
+    assert ranking_score(national, DAY) == 0
     assert not national.in_window(DAY, {'政策':30})
     local = item('https://www.beijing.gov.cn/a')
     assert policy_authority(local) == .8
-    assert ranking_score(local, DAY) == 75.2
+    assert ranking_score(local, DAY) == 0
     assert not local.in_window(DAY, {'政策':30})
     assert policy_authority(item('https://www.sznews.com/a')) == .8
     assert policy_authority(item('https://bciwiki.com/a')) == .7
@@ -32,11 +32,11 @@ def test_national_original_promotes_reprint():
     assert policy_authority(a) == 1 and a.in_window(DAY, {'政策':30})
 
 
-def test_policy_thirty_day_boundary_without_decay():
-    for age in (0, 3, 7, 29):
+def test_policy_thirty_day_boundary_with_decay():
+    for age, factor in ((0, 1), (3, .45), (7, .2), (29, .05)):
         a = item('https://www.nmpa.gov.cn/a', age=age)
         assert a.in_window(DAY, {'政策':30})
-        assert ranking_score(a, DAY) == 94
+        assert ranking_score(a, DAY) == round(94 * factor, 2)
     for age in (-1, 30, 100):
         assert not item('https://www.nmpa.gov.cn/a', age=age).in_window(DAY, {'政策':30})
 

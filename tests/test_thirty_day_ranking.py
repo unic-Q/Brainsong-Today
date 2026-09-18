@@ -14,9 +14,9 @@ DAY = date(2026, 9, 17)
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('age,factor', [(-1, 0), (0, 1), (2, 1), (3, .8), (6, .8), (7, .6), (29, .6), (30, 0)])
+@pytest.mark.parametrize('age,factor', [(-1, 0), (0, 1), (1, .8), (2, .8), (3, .45), (6, .45), (7, .2), (13, .2), (14, .05), (29, .05), (30, 0)])
 def test_boundaries(age, factor):
-    item = Article('脑电', 'https://example.org/a', str(DAY-timedelta(days=age)), '测试', score=90)
+    item = Article('脑电', 'https://example.org/a', str(DAY-timedelta(days=age)), '测试', score=90, source_kind='original')
     assert freshness_factor(item, DAY) == factor
     assert ranking_score(item, DAY) == round(90*factor, 2)
     assert ranking_score(item, DAY) == round(90*factor, 2)
@@ -38,8 +38,7 @@ def test_all_categories_thirty_days_and_freshness_order(tmp_path):
     state = State(tmp_path/'test.db')
     fresh = Article('新品', 'https://example.org/a', str(DAY), '测试', score=70)
     old = Article('标准', 'https://example.org/b', str(DAY-timedelta(days=15)), '测试', category='政策', score=100)
-    # Other-media policy receives 70% authority, not 60% age decay.
-    assert ranking_score(old, DAY) == 70
+    assert ranking_score(old, DAY) == 3.75
     assert select([old, fresh], state, DAY, cfg) == [fresh, old]
     state.close()
 

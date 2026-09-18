@@ -101,7 +101,7 @@ def assess(provider, candidates, profile, rules, evidence_limit=700):
         "company_profile": profile,
         "priority_rules": [{"id": r["id"], "weight": r["weight"], "purpose": r["purpose"]} for r in rules],
         "articles": [{"id": key, "title": a.title, "date": a.published,
-                      "source": a.source, "evidence": (a.summary or a.body)[:evidence_limit],
+                      "source": a.source, "url": a.url, "evidence": (a.summary or a.body)[:evidence_limit],
                       "matched_rules": [{"id": r["id"], "weight": r["weight"]} for r in a.matches]}
                      for key, a in zip(ids, candidates)],
     }
@@ -113,7 +113,14 @@ def assess(provider, candidates, profile, rules, evidence_limit=700):
 旧政策的新解读不能表述为新发布政策；仅有地方产业目标和医保价格对比的汇编应拒绝。
 不得以标题出现关键词就断定相关。未命中规则不代表无关，尤其新公司及脑电SDK；应判断实际技术或商业联系，不得凭未知公司名猜测其业务。
 返回 {"items":[{"id":"原样ID","relevance":0到100整数,"accept":true或false,
-"category":"政策或行业或资本或学术","tags":["最多三个短标签"]}]}。
+"category":"政策或行业或资本或学术","tags":["最多三个短标签"],
+"companies":["文中事件主体企业原名，最多3个，不含顺带提到的企业"],
+"source_kind":"original或media或secondary或unknown",
+"event_type":"policy或product或breakthrough或funding或ordinary",
+"event_evidence":"支持事件判断的连续原文片段，至少8字，没有则空字符串"}]}。
+original仅限原始公告或论文，media为可信媒体原创，secondary为可追溯转载，unknown为来源无法核验。
+业务相关分85-100表示直接影响产品技术应用，60-84为可复用邻近产业，概念关联低于60。
+policy仅限实质相关的新政策或标准；product为核心竞品正式新品或重大商业进展；breakthrough为可复用技术突破；funding为新公司融资或明确合作；普通盘点采访归ordinary。不因标题夸大措辞加分。
 政策仅指政策法规/监管/标准的发布与修订，不把一般企业新闻分类成政策。
 不要摘要、创新性评分、推荐理由或任何解释。每个输入ID必须且仅出现一次。"""
     result = provider.chat(task, payload).get("items")

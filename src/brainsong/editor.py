@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 
 from repo_courier.feeds import business_score
 from repo_courier.matching import contains, match_rules, normalize
-from .model import digest, title_key, dictionary_result, ranking_score
+from .model import digest, title_key, dictionary_result, ranking_score, company_keys
 from .provider import QualityError, assess
 
 
@@ -64,6 +64,8 @@ def merge(items):
             continue
         urls = {s["url"] for s in existing.sources}
         existing.sources.extend(s for s in item.sources if s["url"] not in urls)
+        dates = [d for d in (existing.first_reported, existing.published, item.first_reported, item.published) if d]
+        existing.first_reported = min(dates, default='')
         if len(item.summary) > len(existing.summary):
             existing.summary = item.summary
             existing.summary_kind = item.summary_kind
@@ -86,7 +88,7 @@ def merge(items):
 def relevance_filter(items, provider, cfg, rules, state, today):
     # Cache includes profile and rule content: changing preferences invalidates scores.
     import json
-    signature = digest(json.dumps(["assessment-v3-consumer-scope", cfg["profile"], rules], ensure_ascii=False, sort_keys=True))
+    signature = digest(json.dumps(["assessment-v4-events-companies", cfg["profile"], rules], ensure_ascii=False, sort_keys=True))
     pending = []
     for item in items:
         evidence_hash = digest(item.title + (item.summary or item.body)[:700])
@@ -134,6 +136,16 @@ def apply_assessment(item, row):
     item.category = row["category"]
     item.tags = [re.sub(r"[\[\]<>\n]", "", t)[:18] for t in row["tags"][:3]]
     item.score = business_score(item.matches, item.relevance)
+    evidence = item.title + ' ' + (item.summary or item.body)[:700]
+    quote = row.get('event_evidence', '')
+    event = row.get('event_type', 'ordinary')
+    item.event_type = event if event in {'policy', 'product', 'breakthrough', 'funding'} and isinstance(quote, str) and len(quote) >= 8 and quote in evidence else 'ordinary'
+    kind = row.get('source_kind', 'secondary')
+    item.source_kind = kind if kind in {'original', 'media', 'secondary', 'unknown'} else 'unknown'
+    names = row.get('companies', [])
+    item.companies = [n for n in names if isinstance(n, str) and len(n.strip()) >= 2 and n not in {'公司', '企业', '团队', '研究团队'} and n.casefold() in evidence.casefold()][:3] if isinstance(names, list) else []
+    if item.source_kind == 'unknown':
+        item.accepted = False
 
 
 def merge_event_reports(items, provider, state, today):
@@ -181,6 +193,7 @@ def merge_event_reports(items, provider, state, today):
             primary = sorted(members, key=lambda a: ((urlsplit(a.url).hostname or '').endswith('.gov.cn'),
                                                      ranking_score(a, today)), reverse=True)[0]
             urls = {s['url'] for s in primary.sources}
+            primary.first_reported = min(a.first_reported or a.published for a in members)
             for other in members:
                 if other is primary:
                     continue
@@ -197,29 +210,35 @@ def merge_event_reports(items, provider, state, today):
 
 def select(items, state, today, cfg):
     eligible = [a for a in items if a.accepted and a.in_window(today, cfg["windows"]) and not state.sent(a)]
-    eligible.sort(key=lambda a: (ranking_score(a, today), a.published), reverse=True)
-    policies = [a for a in eligible if a.category == "政策"]
+    scoring = cfg.get('scoring', {})
+    eligible = [a for a in eligible if ranking_score(a, today, scoring) > 0]
+    eligible.sort(key=lambda a: (ranking_score(a, today, scoring), a.published), reverse=True)
     main = [a for a in eligible if not a.exploration or a.category == "政策"]
     exploration = [a for a in eligible if a.category != "政策" and a.exploration]
     cap = min(7, cfg["max_items"])
-    academic_cap = min(2, cfg.get("max_academic_items", 2))
+    category_cap = cfg.get('max_category_items', 3)
+    def fits(item, chosen):
+        limit = min(category_cap, cfg.get('max_academic_items', 3)) if item.category == '学术' else category_cap
+        return (sum(a.category == item.category for a in chosen) < limit and
+                all(sum(key in company_keys(a, scoring) for a in chosen) < cfg.get('max_company_items', 2)
+                    for key in company_keys(item, scoring)))
     picks = []
     for item in main:
-        if item.category == "学术" and sum(a.category == "学术" for a in picks) >= academic_cap:
+        if not fits(item, picks):
             continue
         picks.append(item)
         if len(picks) == cap:
             break
     counts = state.get("counts", {"total": 0, "exploration": 0})
     allowance = int((counts["total"] + len(picks)) * cfg["exploration_ratio"]) - counts["exploration"]
-    if exploration and allowance > 0 and len(policies) < cap:
-        retained = picks[:-1] if len(picks) == cap else picks
+    if exploration and allowance > 0:
         for item in exploration:
-            if item.category == "学术" and sum(a.category == "学术" for a in retained) >= academic_cap:
-                continue
-            picks = retained + [item]
-            break
-    return sorted(picks, key=lambda a: (ranking_score(a, today), a.published), reverse=True)
+            alternatives = ([picks] if len(picks) < cap else []) + [picks[:i] + picks[i+1:] for i in range(len(picks)-1, -1, -1)]
+            retained = next((chosen for chosen in alternatives if fits(item, chosen)), None)
+            if retained is not None:
+                picks = retained + [item]
+                break
+    return sorted(picks, key=lambda a: (ranking_score(a, today, scoring), a.published), reverse=True)
 
 
 def short_text(text, limit=100):
@@ -337,7 +356,7 @@ def render(items, events, today):
         lines += [f"**{n}. [{item.category}] {escape(item.display_title or item.title)}**",
                   f"{item.published[:10]} · {tags}{flag}", escape(short_text(item.summary)),
                   f"（来源：{'、'.join(escape(n) for n in names[:5])}）[原文]({item.url.replace(')', '%29').replace('(', '%28')})", ""]
-    for event in events[:2]:
+    for event in events[:3]:
         lines += [f"[展会] {escape(event['name'])}｜{event['date']}｜{escape(event['place'])}｜{escape(event['kind'])}",
                   f"[原文]({event['url']})", ""]
     body = "\n".join(lines).strip()

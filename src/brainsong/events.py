@@ -89,4 +89,4 @@ def verify_events(events, today, provider, reader, state, offline=False):
     unique = {}
     for item in sorted(visible, key=lambda e: e["date"]):
         unique.setdefault((item["name"], item["kind"], item["date"]), item)
-    return list(unique.values())[:2]
+    return list(unique.values())[:3]

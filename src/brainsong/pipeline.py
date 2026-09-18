@@ -10,7 +10,7 @@ from repo_courier.pushers.feishu import FeishuPusher
 from .collect import Reader, bing_news, collect_source, collect_wechat, from_search, metadata
 from .editor import compact_title, display_summary, usable_summary, merge, merge_event_reports, prepare, relevance_filter, render, select, summarize
 from .events import verify_events
-from .model import Article, digest, ranking_score, freshness_factor, policy_authority
+from .model import Article, digest, ranking_score, freshness_factor, source_factor
 from .provider import OfficialGLM
 from .secrets import api_key
 from .state import State
@@ -29,8 +29,12 @@ def load(root):
             raise ValueError("规则表格式错误")
     if not 0 <= cfg["exploration_ratio"] <= .3 or not 1 <= cfg["max_items"] <= 7:
         raise ValueError("推送配置超出范围")
-    if type(cfg.get("max_academic_items", 2)) is not int or not 0 <= cfg.get("max_academic_items", 2) <= 2:
-        raise ValueError("学术条数必须为0至2")
+    if type(cfg.get("max_academic_items", 3)) is not int or not 0 <= cfg.get("max_academic_items", 3) <= 3:
+        raise ValueError("学术条数必须为0至3")
+    for key, maximum in [('max_category_items', 3), ('max_company_items', 2), ('max_events', 3)]:
+        value = cfg.get(key, maximum)
+        if type(value) is not int or not 1 <= value <= maximum:
+            raise ValueError('配额配置超出范围: ' + key)
     return cfg, rules, sources, events
 
 
@@ -93,7 +97,13 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         if item.published and not item.in_window(today, cfg['windows']):
             continue
         queue.append(item)
-    queue.sort(key=lambda a: (a.exploration, -ranking_score(a, today),
+    scoring = cfg.get('scoring', {})
+    def estimate(item):
+        import re
+        weight = max((r['weight'] for r in item.matches), default=20)
+        signal = bool(re.search('发布|新品|融资|收购|标准|突破|launch|funding', item.title, re.I))
+        return (weight + (20 if signal else 0)) * source_factor(item, scoring) * (freshness_factor(item, today, scoring) if item.published else .8)
+    queue.sort(key=lambda a: (a.exploration, -estimate(a),
                              a.category == '学术', a.category != '政策', a.identity))
     counts = state.get('counts', {'total': 0, 'exploration': 0})
     allowance = int((counts['total'] + cfg['max_items']) * cfg['exploration_ratio']) - counts['exploration']
@@ -110,17 +120,28 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                a.in_window(today, cfg['windows']) and state.sent(a)] if ai else []
     accepted, picks, rejected = [], [], set()
     batch_size = min(6, max(1, cfg['ai']['batch_size']))
-    cursor = 0
-    while cursor < len(queue) and len(picks) < cfg['max_items']:
-        raw = queue[cursor:cursor+batch_size]
+    cursor = extra_batches = metadata_reads = 0
+    budget = cfg.get('max_analysis_candidates', 36)
+    while cursor < min(len(queue), budget):
+        if len(picks) >= cfg['max_items']:
+            promising = [a for a in queue[cursor:] if estimate(a) > min(ranking_score(p, today, scoring) for p in picks) * 1.1]
+            if not promising or extra_batches >= cfg.get('max_extra_batches', 1):
+                break
+            tail = queue[cursor:]
+            queue[cursor:] = promising + [a for a in tail if a not in promising]
+            extra_batches += 1
+            progress('priority check extra batch', candidates=len(promising))
+        raw = queue[cursor:min(cursor+batch_size, budget)]
         cursor += len(raw)
         progress('batch start', processed=cursor, total=len(queue), ready=len(picks))
         batch = []
         for offset, item in enumerate(raw, 1):
-            if item.category == '学术' and sum(a.category == '学术' for a in picks) >= cfg.get('max_academic_items', 2):
-                continue
             if not offline and ((not item.published and item.matches) or
                                 (item.published and not usable_summary(item.summary, item.title) and not item.body)):
+                if metadata_reads >= cfg.get('max_metadata_reads', 12):
+                    progress('article deferred metadata budget')
+                    continue
+                metadata_reads += 1
                 progress('article read', article=cursor-len(raw)+offset)
                 try:
                     metadata(item, reader.get(item.url))
@@ -202,12 +223,19 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                     state.error(today, '定向补搜:' + category, exc)
         else:
             items = []
-            for source in sources:
+            site_searches = 0
+            # Within the paid site-search budget, official policy entries lead.
+            ordered_sources = sorted(sources, key=lambda s: 0 if (urlsplit(s.get('url', '')).hostname or '').endswith('.gov.cn') else 1)
+            for source in ordered_sources:
                 if not source.get("enabled", True):
                     continue
                 progress('source start ' + source['id'])
                 try:
                     if source["kind"] == "search":
+                        if site_searches >= cfg.get('site_search_limit', 3):
+                            progress('site search deferred ' + source['id'])
+                            continue
+                        site_searches += 1
                         rows = provider.search(source.get("query", "脑机接口 脑电 耳机 教育"), urlsplit(source["url"]).hostname,
                                                recency='oneMonth')
                         collected = from_search(rows, source.get("category", "行业"), urlsplit(source["url"]).hostname)
@@ -257,24 +285,25 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
         pool, picks = process_candidates(items + state.candidates() + state.recent(today),
                                          cfg, rules, exclusions, state, provider, reader, today,
                                          progress, offline=offline, no_ai=no_ai)
-        picks.sort(key=lambda a: (ranking_score(a, today), a.published), reverse=True)
+        picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), a.published), reverse=True)
         for item in pool:
             state.save(item)
         visible_events = verify_events(events, today, provider, reader, state, offline=offline or no_ai or resume or cached_only)
+        visible_events = visible_events[:cfg.get('max_events', 3)]
         progress('render', items=len(picks), events=len(visible_events))
         title, body = render(picks, visible_events, today)
         out = root / "reports" / today.isoformat() / ("offline-preview" if offline else "live-preview")
         out.mkdir(parents=True, exist_ok=True)
         (out / "brief.md").write_text(body, encoding="utf-8")
         (out / "brief.json").write_text(json.dumps({"title": title, "offline_sample": offline,
-                                                  "items": [dict(a.record(), freshness_factor=None if a.category == '政策' else freshness_factor(a, today),
-                                                                 authority_factor=policy_authority(a) if a.category == '政策' else None,
-                                                                 ranking_score=ranking_score(a, today)) for a in picks],
+                                                  "items": [dict(a.record(), freshness_factor=freshness_factor(a, today, cfg.get('scoring')),
+                                                                 source_factor=source_factor(a, cfg.get('scoring')),
+                                                                 ranking_score=ranking_score(a, today, cfg.get('scoring'))) for a in picks],
                                                   "events": visible_events}, ensure_ascii=False, indent=2), encoding="utf-8")
         delivered = False
-        if send and len(picks) < cfg['max_items']:
-            state.error(today, '简报未完成', 'insufficient_items_retained_for_continuation')
-        if send and len(picks) == cfg['max_items']:
+        if send and not picks and not visible_events:
+            state.error(today, '无可发送内容', 'no_qualified_items')
+        if send and (picks or visible_events):
             import os
             webhook = os.getenv("FEISHU_WEBHOOK", "")
             parsed = urlsplit(webhook)

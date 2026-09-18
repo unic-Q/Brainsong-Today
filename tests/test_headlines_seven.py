@@ -33,8 +33,8 @@ def test_no_title_hard_cut():
 
 def test_select_and_render_seven(tmp_path):
     state = State(tmp_path / 'a.db')
-    rows = [Article(f'脑电产品更新{i}', f'https://example.org/{i}', str(DAY), '测试') for i in range(9)]
-    cfg = {'max_items': 7, 'windows': {'行业': 3}, 'exploration_ratio': .1}
+    rows = [Article(f'脑电产品更新{i}', f'https://example.org/{i}', str(DAY), '测试', score=80, category=['行业','资本','政策'][i%3]) for i in range(9)]
+    cfg = {'max_items': 7, 'windows': {'行业': 30, '资本':30, '政策':30}, 'exploration_ratio': .1}
     picks = select(rows, state, DAY, cfg)
     assert len(picks) == 7
     body = render(rows, [], DAY)[1]
@@ -47,8 +47,8 @@ def test_pipeline_replenishes_failed_summaries(tmp_path, monkeypatch):
     root = __import__('pathlib').Path(__file__).resolve().parents[1]
     cfg, policy, _, _ = pipeline.load(root)
     cfg['search_enabled'] = False
-    rows = [Article(f'脑电耳机新品{i}', f'https://example.org/{i}', str(DAY), '测试',
-                    summary='脑电耳机支持课堂中的学习状态监测。') for i in range(9)]
+    rows = [Article(f'脑电耳机{"融资" if i%3 == 1 else "新品"}{i}', f'https://example.org/{i}', str(DAY), '测试',
+                    summary='脑电耳机支持课堂中的学习状态监测。', category=['行业','资本','政策'][i%3]) for i in range(12)]
     monkeypatch.setattr(pipeline, 'load', lambda root: (cfg, policy, [{'id': 'test', 'kind': 'html'}], []))
     monkeypatch.setattr(pipeline, 'api_key', lambda: 'test-no-network')
     monkeypatch.setattr(pipeline, 'collect_source', lambda *args, **kwargs: rows)
@@ -71,10 +71,10 @@ def test_academic_cap_and_exploration(tmp_path):
     papers = [Article(f'论文{i}', f'https://example.org/p{i}', str(DAY), '测试', category='学术', score=100-i) for i in range(6)]
     news = [Article(f'新闻{i}', f'https://example.org/n{i}', str(DAY), '测试', score=70-i) for i in range(6)]
     picks = select(papers + news, state, DAY, cfg)
-    assert len(picks) == 7 and sum(a.category == '学术' for a in picks) == 2
+    assert len(picks) == 5 and sum(a.category == '学术' for a in picks) == 2
     assert len(select(papers, state, DAY, cfg)) == 2
     state.put('counts', {'total': 100, 'exploration': 0})
     extra = Article('探索论文', 'https://example.org/x', str(DAY), '测试', category='学术', exploration=True, score=100)
     picks = select(papers + news + [extra], state, DAY, cfg)
-    assert len(picks) == 7 and sum(a.category == '学术' for a in picks) == 2
+    assert len(picks) == 5 and sum(a.category == '学术' for a in picks) == 2
     state.close()

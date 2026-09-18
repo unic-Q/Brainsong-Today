@@ -6,7 +6,29 @@ profile: >-
   关注国家及行业政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管。不关注公司注册地/研发地补贴。
   医疗不是我们的主营用途，但共用脑电技术和适用监管可关注。探索内容必须有合理业务邻近性，不能用无关内容凑数。
 max_items: 7
-max_academic_items: 2
+max_academic_items: 3
+max_category_items: 3
+max_company_items: 2
+max_events: 3
+max_analysis_candidates: 36
+max_metadata_reads: 12
+max_extra_batches: 1
+site_search_limit: 3
+scoring:
+  freshness: [[1, 1.0], [3, 0.8], [7, 0.45], [14, 0.2], [30, 0.05]]
+  event_bonus: {policy: 20, product: 15, breakthrough: 15, funding: 10, ordinary: 0}
+  source_factors: {original: 1.0, media: 0.9, secondary: 0.75, unknown: 0.0}
+  company_aliases:
+    BrainCo: [BrainCo, 强脑科技, 强脑]
+    EMOTIV: [EMOTIV, Emotiv]
+    Neurable: [Neurable]
+    Muse: [Muse, InteraXon]
+    NeuroSky: [NeuroSky, 神念科技]
+    脑陆科技: [脑陆科技, 脑陆]
+    博睿康: [博睿康, Neuracle]
+    柔灵科技: [柔灵科技, 柔灵]
+    Apple: [Apple, 苹果公司, 苹果]
+    Sony: [Sony, 索尼]
 exploration_ratio: 0.10
 short_body_chars: 300
 windows: {行业: 30, 资本: 30, 学术: 30, 政策: 30}

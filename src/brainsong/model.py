@@ -36,21 +36,45 @@ def dictionary_result(url: str) -> bool:
     return any(host == d or host.endswith('.' + d) for d in domains)
 
 
-def freshness_factor(item, today: date) -> float:
-    """Calendar-day windows include today: days 0–2, 3–6, 7–29."""
+def freshness_factor(item, today: date, scoring=None) -> float:
+    """Calendar-day tiers; date-only sources cannot support exact 24h ages."""
     try:
-        age = (today - date.fromisoformat(item.published[:10])).days
+        age = (today - date.fromisoformat((item.first_reported or item.published)[:10])).days
     except ValueError:
         return 0.0
     if not 0 <= age < 30:
         return 0.0
-    return 1.0 if age < 3 else 0.8 if age < 7 else 0.6
+    for upper, factor in (scoring or {}).get('freshness', [[1, 1], [3, .8], [7, .45], [14, .2], [30, .05]]):
+        if age < upper:
+            return factor
+    return 0.0
 
 
-def ranking_score(item, today: date) -> float:
+def source_factor(item, scoring=None):
+    host = (urlsplit(item.url).hostname or '').lower()
+    official = host.endswith('.gov.cn') or host in {'gov.cn', 'arxiv.org', 'www.arxiv.org'}
+    kind = 'original' if official else item.source_kind
+    return (scoring or {}).get('source_factors', {'original': 1, 'media': .9, 'secondary': .75, 'unknown': 0}).get(kind, 0)
+
+
+def ranking_score(item, today: date, scoring=None) -> float:
     # Never mutate base score: repeated selection must not compound decay.
-    factor = policy_authority(item) if item.category == '政策' else freshness_factor(item, today)
-    return round(item.score * factor, 2)
+    bonuses = (scoring or {}).get('event_bonus', {'policy':20, 'product':15, 'breakthrough':15, 'funding':10, 'ordinary':0})
+    base = item.relevance if item.relevance is not None else item.score
+    return round((base + bonuses.get(item.event_type, 0)) * source_factor(item, scoring) * freshness_factor(item, today, scoring), 2)
+
+
+def company_keys(item, scoring=None):
+    aliases = (scoring or {}).get('company_aliases', {})
+    text = item.title + ' ' + item.source_summary
+    found = set()
+    for company, names in aliases.items():
+        if any(re.search(r'(?<![A-Za-z])' + re.escape(n) + r'(?![A-Za-z])', text, re.I) for n in names):
+            found.add(company.casefold())
+    for name in item.companies:
+        canonical_name = next((key for key, names in aliases.items() if name.casefold() in [n.casefold() for n in names]), name)
+        found.add(canonical_name.casefold())
+    return found
 
 
 def policy_authority(item) -> float:
@@ -99,6 +123,10 @@ class Article:
     source_summary: str = ""
     source_excerpt: str = ""
     summary_version: str = ""
+    event_type: str = 'ordinary'
+    source_kind: str = 'secondary'
+    companies: list[str] = field(default_factory=list)
+    first_reported: str = ''
 
     def __post_init__(self):
         self.url = canonical(self.url)

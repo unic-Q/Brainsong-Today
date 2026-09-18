@@ -18,6 +18,9 @@ class NoNetwork:
 
 
 def make_item(n, category='行业', published='2026-09-18', title=None):
+    category = ['行业', '资本', '政策'][n % 3] if category == '行业' else category
+    if category == '资本' and title is None:
+        title = f'脑机接口新品融资进展{n}'
     return Article(title or f'脑机接口新品研发进展{n}', f'https://example.org/{n}',
                    published, '官网', '公司发布脑电采集设备，提供面向教育和睡眠研究的数据采集功能。', category=category)
 
@@ -49,7 +52,7 @@ def test_weighted_batches_stop_and_keep_remaining(tmp_path, monkeypatch):
     relevant = [make_item(i) for i in range(30)]
     state, assessed, pool, picks = run_batch(tmp_path, monkeypatch, unrelated + relevant)
     assert len(picks) == 7
-    assert len(assessed) == 12  # Two six-item batches, not all 130.
+    assert 12 <= len(assessed) <= 24  # Category quotas may require a third batch, then one check.
     assert all(a.matches for a in picks)
     assert len(state.candidates()) == len(pool) == 130
     assert state.db.execute('select count(*) from delivered').fetchone()[0] == 0
@@ -77,7 +80,7 @@ def test_academic_cap_survives_batches(tmp_path, monkeypatch):
     items = [make_item(i, '学术') for i in range(12)] + [make_item(i+30) for i in range(15)]
     state, _, _, picks = run_batch(tmp_path, monkeypatch, items)
     assert len(picks) == 7
-    assert sum(a.category == '学术' for a in picks) <= 2
+    assert sum(a.category == '学术' for a in picks) <= 3
     state.close()
 
 
