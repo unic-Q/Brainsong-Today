@@ -1,0 +1,75 @@
+name: Brainsong Today
+on:
+  # Scheduled delivery is intentionally disabled until the owner enables it.
+  # schedule:
+  #   - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      initialize_state:
+        description: "仅首次部署且无历史时勾选"
+        type: boolean
+        default: false
+      send:
+        description: "发送飞书；不勾选仅预览（仍调用官方搜索及AI）"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: brainsong-daily-state
+  cancel-in-progress: false
+jobs:
+  daily:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Install locked environment
+        run: uv sync --frozen --extra dev
+      - name: Offline regression tests
+        run: uv run pytest tests/test_brainsong.py -q
+      - name: Restore persistent history
+        id: restore
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INITIALIZE_STATE: ${{ inputs.initialize_state }}
+        run: uv run python tools/restore_state.py
+      - name: Collect, select and deliver
+        if: steps.restore.outcome == 'success'
+        env:
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          SEND_BRIEF: ${{ github.event_name == 'schedule' || inputs.send }}
+        shell: bash
+        run: |
+          if [ "$SEND_BRIEF" = "true" ]; then
+            uv run brainsong-today --send
+          else
+            uv run brainsong-today
+          fi
+      - name: Preserve history even after delivery failure
+        if: always() && steps.restore.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: brainsong-state
+          path: state/brainsong.sqlite3
+          retention-days: 90
+          if-no-files-found: error
+      - name: Preserve reports and failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brainsong-reports-logs
+          path: |
+            reports/
+            logs/
+          retention-days: 30
+          if-no-files-found: ignore

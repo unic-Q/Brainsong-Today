@@ -1,0 +1,33 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.DS_Store
+dist/
+build/
+# Local generated reports and runtime data
+/reports/
+/data/
+/logs/
+/state/
+/backups/
+*.dpapi
+*.sqlite3*
+.env.*
+!.env.example
+
+# Version-controlled example reports and data
+!/example_reports/
+!/example_reports/**
+!/example_data/
+!/example_data/**
+/example_reports/.DS_Store
+
+# Independent web hosting repository
+/web-host/
+
+.qoder

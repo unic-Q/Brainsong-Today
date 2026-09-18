@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-courier"
+version = "0.1.0"
+description = "Personalized daily tech briefings from GitHub Trending and curated RSS feeds."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "jjyaoao" }]
+keywords = ["github", "rss", "tech-news", "daily-report", "feishu", "wechat", "qq"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "tzdata>=2025.2; sys_platform == 'win32'",
+  "beautifulsoup4>=4.12,<5",
+  "httpx>=0.27,<1",
+  "json-repair>=0.30,<1",
+  "PyYAML>=6,<7",
+  "tiktoken>=0.7,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.3,<10", "ruff>=0.5,<1"]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+
+[project.scripts]
+brainsong-today = "brainsong.cli:main"
+repo-courier = "repo_courier.cli:main"
+repo-courier-web = "repo_courier.web:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+repo_courier = ["web_assets/*.html", "web_assets/*.css", "web_assets/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
