@@ -9,6 +9,8 @@ venv/
 .DS_Store
 dist/
 build/
+# Original project's promotional image is not part of this delivery.
+/assets/
 # Local generated reports and runtime data
 /reports/
 /data/
