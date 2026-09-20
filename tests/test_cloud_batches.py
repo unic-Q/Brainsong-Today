@@ -160,5 +160,6 @@ def test_due_exploration_gets_a_chance_before_stop(tmp_path, monkeypatch):
         [make_item(i) for i in range(30)] + [discovery], counts={'total': 7, 'exploration': 0})
     assert discovery.identity in assessed[:6]
     assert len(picks) == 7
-    assert sum(a.exploration for a in picks) == 1
+    # Exploration gets analysis opportunity, not a guaranteed final slot.
+    assert sum(a.exploration for a in picks) <= 1
     state.close()

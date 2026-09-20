@@ -56,7 +56,7 @@ class State:
             old = self.db.execute('SELECT payload FROM candidate_inputs WHERE id=?', (item.identity,)).fetchone()
             if old:
                 previous = json.loads(old[0])
-                prior_source = previous.get('source_summary', '') or (previous.get('summary', '') if previous.get('summary_kind') not in {'ai', 'failed'} else '')
+                prior_source = previous.get('source_summary', '') or (previous.get('summary', '') if previous.get('summary_kind') not in {'ai', 'failed', 'formatted'} else '')
                 if len(prior_source) > len(value['summary']):
                     value['summary'] = prior_source
                 value['source_summary'] = value['summary']
@@ -113,7 +113,7 @@ class State:
         self.db.execute("DELETE FROM delivered WHERE day<? AND status!='pending'", ((today-timedelta(days=365)).isoformat(),))
         cutoff = (today-timedelta(days=30)).isoformat()
         stale = []
-        for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'ai:%' OR key LIKE 'summary-v2:%' OR key LIKE 'summary-v3:%' OR key LIKE 'summary-v4:%' OR key LIKE 'headline-v1:%' OR key LIKE 'dedup:%'"):
+        for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'ai:%' OR key LIKE 'summary-v2:%' OR key LIKE 'summary-v3:%' OR key LIKE 'summary-v4:%' OR key LIKE 'summary-v5:%' OR key LIKE 'headline-v1:%' OR key LIKE 'dedup:%'"):
             if json.loads(value).get("day", "") < cutoff:
                 stale.append((key,))
         self.db.executemany("DELETE FROM kv WHERE key=?", stale)

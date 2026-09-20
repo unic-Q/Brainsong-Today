@@ -5,7 +5,7 @@ import pytest
 
 from brainsong.collect import from_search
 from brainsong.editor import relevance_filter, select, prepare
-from brainsong.model import Article, freshness_factor, ranking_score, dictionary_result
+from brainsong.model import Article, freshness_factor, ranking_score, shortlist_score, dictionary_result
 from brainsong.pipeline import load, queries
 from brainsong.provider import QualityError
 from brainsong.state import State
@@ -18,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_boundaries(age, factor):
     item = Article('脑电', 'https://example.org/a', str(DAY-timedelta(days=age)), '测试', score=90, source_kind='original')
     assert freshness_factor(item, DAY) == factor
-    assert ranking_score(item, DAY) == round(90*factor, 2)
-    assert ranking_score(item, DAY) == round(90*factor, 2)
+    assert shortlist_score(item, DAY) == round(90*factor, 2)
+    assert ranking_score(item, DAY) == 69.75
     assert item.score == 90
 
 
@@ -38,8 +38,9 @@ def test_all_categories_thirty_days_and_freshness_order(tmp_path):
     state = State(tmp_path/'test.db')
     fresh = Article('新品', 'https://example.org/a', str(DAY), '测试', score=70)
     old = Article('标准', 'https://example.org/b', str(DAY-timedelta(days=15)), '测试', category='政策', score=100)
-    assert ranking_score(old, DAY) == 3.75
-    assert select([old, fresh], state, DAY, cfg) == [fresh, old]
+    assert shortlist_score(old, DAY) == 5
+    # Once both qualify, relevance × authority can promote the older item.
+    assert select([old, fresh], state, DAY, cfg) == [old, fresh]
     state.close()
 
 

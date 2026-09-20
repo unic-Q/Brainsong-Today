@@ -6,6 +6,7 @@ profile: >-
   关注国家及行业政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管。不关注公司注册地/研发地补贴。
   医疗不是我们的主营用途，但共用脑电技术和适用监管可关注。探索内容必须有合理业务邻近性，不能用无关内容凑数。
 max_items: 7
+shortlist_items: 10
 max_academic_items: 3
 max_category_items: 3
 max_company_items: 2
@@ -15,9 +16,28 @@ max_metadata_reads: 12
 max_extra_batches: 1
 site_search_limit: 3
 scoring:
+  # Editable editorial presets, not objective measurements of reputation.
+  source_weights: {authority: 0.7, recognition: 0.3}
+  source_reputation:
+    original: [85, 60]
+    media: [80, 70]
+    secondary: [60, 50]
+    unknown: [0, 0]
+  source_domains:
+    nmpa.gov.cn: [100, 95]
+    gov.cn: [100, 95]
+    nature.com: [95, 95]
+    science.org: [95, 95]
+    arxiv.org: [70, 85]
+    stdaily.com: [90, 85]
+    xinhuanet.com: [95, 95]
+    news.cn: [95, 95]
+    people.com.cn: [95, 95]
+    stcn.com: [85, 85]
+    36kr.com: [80, 85]
+    ithome.com: [80, 80]
+    bciwiki.com: [70, 50]
   freshness: [[1, 1.0], [3, 0.8], [7, 0.45], [14, 0.2], [30, 0.05]]
-  event_bonus: {policy: 20, product: 15, breakthrough: 15, funding: 10, ordinary: 0}
-  source_factors: {original: 1.0, media: 0.9, secondary: 0.75, unknown: 0.0}
   company_aliases:
     BrainCo: [BrainCo, 强脑科技, 强脑]
     EMOTIV: [EMOTIV, Emotiv]

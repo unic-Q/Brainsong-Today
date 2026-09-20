@@ -10,7 +10,7 @@ from repo_courier.pushers.feishu import FeishuPusher
 from .collect import Reader, bing_news, collect_source, collect_wechat, from_search, metadata
 from .editor import compact_title, display_summary, usable_summary, merge, merge_event_reports, prepare, relevance_filter, render, select, summarize
 from .events import verify_events
-from .model import Article, digest, ranking_score, freshness_factor, source_factor
+from .model import Article, digest, ranking_score, shortlist_score, freshness_factor, source_factor, star_text
 from .provider import OfficialGLM
 from .secrets import api_key
 from .state import State
@@ -35,6 +35,15 @@ def load(root):
         value = cfg.get(key, maximum)
         if type(value) is not int or not 1 <= value <= maximum:
             raise ValueError('配额配置超出范围: ' + key)
+    if cfg.get('shortlist_items', 10) != 10:
+        raise ValueError('当前两轮方案入围池必须为10条')
+    scoring = cfg.get('scoring', {})
+    weights = scoring.get('source_weights', {'authority': .7, 'recognition': .3})
+    if set(weights) != {'authority', 'recognition'} or any(not isinstance(v, (int, float)) or not 0 <= v <= 1 for v in weights.values()) or abs(sum(weights.values())-1) > .000001:
+        raise ValueError('来源权重必须非负且合计1')
+    for values in list(scoring.get('source_domains', {}).values()) + list(scoring.get('source_reputation', {}).values()):
+        if not isinstance(values, list) or len(values) != 2 or any(not isinstance(v,(int,float)) or not 0 <= v <= 100 for v in values):
+            raise ValueError('来源权威性/知名度须为0到100')
     return cfg, rules, sources, events
 
 
@@ -130,10 +139,8 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         queue.append(item)
     scoring = cfg.get('scoring', {})
     def estimate(item):
-        import re
         weight = max((r['weight'] for r in item.matches), default=20)
-        signal = bool(re.search('发布|新品|融资|收购|标准|突破|launch|funding', item.title, re.I))
-        return (weight + (20 if signal else 0)) * source_factor(item, scoring) * (freshness_factor(item, today, scoring) if item.published else 0)
+        return weight * (freshness_factor(item, today, scoring) if item.published else 0)
     queue.sort(key=lambda a: (a.exploration, -estimate(a),
                              a.category == '学术', a.category != '政策', a.identity))
     counts = state.get('counts', {'total': 0, 'exploration': 0})
@@ -155,8 +162,11 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     remaining = list(queue)
     budget = cfg.get('max_analysis_candidates', 36)
     while remaining and analysed < budget:
-        if len(picks) >= cfg['max_items']:
-            promising = [a for a in remaining if a.published and estimate(a) > min(ranking_score(p, today, scoring) for p in picks) * 1.1]
+        qualified = [a for a in accepted if a.identity not in rejected]
+        have_ten = len(qualified) >= cfg.get('shortlist_items', 10)
+        if len(picks) >= cfg['max_items'] and have_ten:
+            cutoff = sorted((shortlist_score(a, today, scoring) for a in qualified), reverse=True)[9]
+            promising = [a for a in remaining if a.published and estimate(a) > cutoff * 1.1]
             if not promising or extra_batches >= cfg.get('max_extra_batches', 1):
                 break
             extra_batches += 1
@@ -164,7 +174,9 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             available = promising
         else:
             available = remaining
-        raw = direction_batch(available, picks, cfg, estimate, min(batch_size, budget-analysed),
+        schedule_cfg = cfg if have_ten else dict(cfg, max_category_items=cfg.get('max_category_items', 3)+1,
+                                               max_academic_items=cfg.get('max_academic_items', 3)+1)
+        raw = direction_batch(available, picks, schedule_cfg, estimate, min(batch_size, budget-analysed),
                               can_read=offline or metadata_reads < cfg.get('max_metadata_reads', 12),
                               exploration_due=allowance > 0 and not any(a.exploration for a in picks))
         if not raw:
@@ -330,7 +342,9 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
         pool, picks = process_candidates(items + state.candidates() + state.recent(today),
                                          cfg, rules, exclusions, state, provider, reader, today,
                                          progress, offline=offline, no_ai=no_ai)
-        picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), a.published), reverse=True)
+        picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), shortlist_score(a, today, cfg.get('scoring')), a.identity), reverse=True)
+        for item in picks:
+            item.recommendation_score = ranking_score(item, today, cfg.get('scoring'))
         for item in pool:
             state.save(item)
         visible_events = verify_events(events, today, provider, reader, state, offline=offline or no_ai or resume or cached_only)
@@ -343,6 +357,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
         (out / "brief.json").write_text(json.dumps({"title": title, "offline_sample": offline,
                                                   "items": [dict(a.record(), freshness_factor=freshness_factor(a, today, cfg.get('scoring')),
                                                                  source_factor=source_factor(a, cfg.get('scoring')),
+                                                                 shortlist_score=shortlist_score(a, today, cfg.get('scoring')),
+                                                                 stars=star_text(a.recommendation_score),
                                                                  ranking_score=ranking_score(a, today, cfg.get('scoring'))) for a in picks],
                                                   "events": visible_events}, ensure_ascii=False, indent=2), encoding="utf-8")
         delivered = False

@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 from brainsong.editor import select, apply_assessment, merge
-from brainsong.model import Article, ranking_score
+from brainsong.model import Article, ranking_score, shortlist_score
 from brainsong.pipeline import load
 from brainsong.state import State
 from test_brainsong import ROOT
@@ -18,7 +18,7 @@ def test_company_aliases_and_category_caps(tmp_path):
             for i, name in enumerate(['强脑科技','BrainCo','强脑','甲公司','乙公司','丙公司','丁公司','戊公司','己公司'])]
     picks = select(rows, state, DAY, cfg)
     assert len(picks) == 7
-    assert sum(a in rows[:3] for a in picks) == 2
+    assert sum(a in rows[:3] for a in picks) <= 2
     assert all(sum(a.category == c for a in picks) <= 3 for c in ['行业','资本','学术'])
     state.close()
 
@@ -27,17 +27,18 @@ def test_event_bonus_requires_quote_and_does_not_stack():
     a = Article('公司发布脑电耳机正式新品', 'https://example.org/a', str(DAY), '官网')
     row = dict(relevance=90, accept=True, category='行业', tags=[], event_type='product', source_kind='original')
     apply_assessment(a, row)
-    assert ranking_score(a, DAY) == 90
+    assert ranking_score(a, DAY) == 69.75
     apply_assessment(a, dict(row, event_evidence='公司发布脑电耳机正式新品'))
-    assert ranking_score(a, DAY) == 105
-    assert ranking_score(a, DAY+timedelta(days=7)) == 21
+    assert ranking_score(a, DAY) == 69.75  # Event bonuses no longer enter either score.
+    assert ranking_score(a, DAY+timedelta(days=7)) == 69.75
+    assert shortlist_score(a, DAY+timedelta(days=7)) == 18
 
 
 def test_reprint_keeps_old_event_date():
     a = Article('相同新闻', 'https://example.org/a', str(DAY-timedelta(days=15)), '媒体', score=90)
     b = Article('相同新闻', 'https://example.org/b', str(DAY), '媒体', score=90)
     merged = merge([b, a])[0]
-    assert ranking_score(merged, DAY) == 3.38
+    assert shortlist_score(merged, DAY) == 4.5
 
 
 def test_partial_brief_can_send(tmp_path, monkeypatch):

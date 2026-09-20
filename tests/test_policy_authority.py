@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from brainsong.model import Article, policy_authority, ranking_score
+from brainsong.model import Article, policy_authority, ranking_score, shortlist_score
 from brainsong.editor import select
 from brainsong.state import State
 
@@ -15,11 +15,11 @@ def item(url, age=100):
 def test_authority_and_window():
     national = item('https://www.nmpa.gov.cn/a')
     assert policy_authority(national) == 1
-    assert ranking_score(national, DAY) == 0
+    assert shortlist_score(national, DAY) == 0
     assert not national.in_window(DAY, {'政策':30})
     local = item('https://www.beijing.gov.cn/a')
     assert policy_authority(local) == .8
-    assert ranking_score(local, DAY) == 0
+    assert shortlist_score(local, DAY) == 0
     assert not local.in_window(DAY, {'政策':30})
     assert policy_authority(item('https://www.sznews.com/a')) == .8
     assert policy_authority(item('https://bciwiki.com/a')) == .7
@@ -36,7 +36,8 @@ def test_policy_thirty_day_boundary_with_decay():
     for age, factor in ((0, 1), (3, .45), (7, .2), (29, .05)):
         a = item('https://www.nmpa.gov.cn/a', age=age)
         assert a.in_window(DAY, {'政策':30})
-        assert ranking_score(a, DAY) == round(94 * factor, 2)
+        assert shortlist_score(a, DAY) == round(94 * factor, 2)
+        assert ranking_score(a, DAY) == 89.77
     for age in (-1, 30, 100):
         assert not item('https://www.nmpa.gov.cn/a', age=age).in_window(DAY, {'政策':30})
 

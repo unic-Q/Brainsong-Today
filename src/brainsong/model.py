@@ -51,17 +51,38 @@ def freshness_factor(item, today: date, scoring=None) -> float:
 
 
 def source_factor(item, scoring=None):
+    scoring = scoring or {}
     host = (urlsplit(item.url).hostname or '').lower()
-    official = host.endswith('.gov.cn') or host in {'gov.cn', 'arxiv.org', 'www.arxiv.org'}
-    kind = 'original' if official else item.source_kind
-    return (scoring or {}).get('source_factors', {'original': 1, 'media': .9, 'secondary': .75, 'unknown': 0}).get(kind, 0)
+    ratings = scoring.get('source_reputation', {'original':[85,60], 'media':[80,70], 'secondary':[60,50], 'unknown':[0,0]})
+    authority, recognition = ratings.get(item.source_kind, [0,0])
+    if host.endswith('.gov.cn') or host == 'gov.cn':
+        authority, recognition = 100, 85
+    if host in {'arxiv.org', 'www.arxiv.org'}:
+        authority, recognition = 70, 85  # Preprints are not peer-review certification.
+    domains = scoring.get('source_domains', {})
+    for domain in sorted(domains, key=len, reverse=True):
+        if host == domain or host.endswith('.' + domain):
+            authority, recognition = domains[domain]
+            break
+    weights = scoring.get('source_weights', {'authority': .7, 'recognition': .3})
+    return (authority * weights['authority'] + recognition * weights['recognition']) / 100
+
+
+def shortlist_score(item, today: date, scoring=None) -> float:
+    base = item.relevance if item.relevance is not None else item.score
+    return round(base * freshness_factor(item, today, scoring), 4)
 
 
 def ranking_score(item, today: date, scoring=None) -> float:
     # Never mutate base score: repeated selection must not compound decay.
-    bonuses = (scoring or {}).get('event_bonus', {'policy':20, 'product':15, 'breakthrough':15, 'funding':10, 'ordinary':0})
     base = item.relevance if item.relevance is not None else item.score
-    return round((base + bonuses.get(item.event_type, 0)) * source_factor(item, scoring) * freshness_factor(item, today, scoring), 2)
+    return round(base * source_factor(item, scoring), 4)
+
+
+def star_text(score):
+    import math
+    halves = max(0, min(10, math.floor(score / 10 + .5)))
+    return '★' * (halves // 2) + ('☆' if halves % 2 else '')
 
 
 def company_keys(item, scoring=None):
@@ -127,6 +148,8 @@ class Article:
     source_kind: str = 'secondary'
     companies: list[str] = field(default_factory=list)
     first_reported: str = ''
+    subject: str = ''
+    recommendation_score: float | None = None
 
     def __post_init__(self):
         self.url = canonical(self.url)
@@ -137,7 +160,7 @@ class Article:
             self.body = self.source_excerpt
 
     def capture_source(self):
-        if self.summary_kind not in {'ai', 'failed'} and self.summary:
+        if self.summary_kind not in {'ai', 'failed', 'formatted'} and self.summary:
             self.source_summary = self.summary[:6000]
         if self.body:
             self.source_excerpt = self.body[:6000]

@@ -32,7 +32,7 @@ def test_old_ai_summary_is_not_source_or_reused(tmp_path):
             return {'summary':'脑电产品更新，详细参数仍需进一步验证。'}
     ai = AI()
     summarize(a, ai, s, DAY)
-    assert ai.calls == 1 and a.summary_version == '100-v4-source-evidence-retry'
+    assert ai.calls == 1 and a.summary_version == '100-v5-subject-first'
     summarize(a, ai, s, DAY)
     assert ai.calls == 1
     s.close()

@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 
 from repo_courier.feeds import business_score
 from repo_courier.matching import contains, match_rules, normalize
-from .model import digest, title_key, dictionary_result, ranking_score, company_keys
+from .model import digest, title_key, dictionary_result, ranking_score, shortlist_score, company_keys, star_text
 from .provider import QualityError, assess
 
 
@@ -54,7 +54,7 @@ def merge(items):
     output = []
     for item in items:
         item.capture_source()
-        if item.summary_kind in {'ai', 'failed'}:
+        if item.summary_kind in {'ai', 'failed', 'formatted'}:
             item.summary = item.source_summary
             item.summary_kind = 'source'
             item.summary_version = ''
@@ -88,7 +88,7 @@ def merge(items):
 def relevance_filter(items, provider, cfg, rules, state, today):
     # Cache includes profile and rule content: changing preferences invalidates scores.
     import json
-    signature = digest(json.dumps(["assessment-v4-events-companies", cfg["profile"], rules], ensure_ascii=False, sort_keys=True))
+    signature = digest(json.dumps(["assessment-v5-subject", cfg["profile"], rules], ensure_ascii=False, sort_keys=True))
     pending = []
     for item in items:
         evidence_hash = digest(item.title + (item.summary or item.body)[:700])
@@ -144,6 +144,8 @@ def apply_assessment(item, row):
     item.source_kind = kind if kind in {'original', 'media', 'secondary', 'unknown'} else 'unknown'
     names = row.get('companies', [])
     item.companies = [n for n in names if isinstance(n, str) and len(n.strip()) >= 2 and n not in {'公司', '企业', '团队', '研究团队'} and n.casefold() in evidence.casefold()][:3] if isinstance(names, list) else []
+    subject = row.get('subject', '')
+    item.subject = subject.strip() if isinstance(subject, str) and 2 <= len(subject.strip()) <= 80 and subject.strip() in evidence else ''
     if item.source_kind == 'unknown':
         item.accepted = False
 
@@ -211,34 +213,48 @@ def merge_event_reports(items, provider, state, today):
 def select(items, state, today, cfg):
     eligible = [a for a in items if a.accepted and a.in_window(today, cfg["windows"]) and not state.sent(a)]
     scoring = cfg.get('scoring', {})
-    eligible = [a for a in eligible if ranking_score(a, today, scoring) > 0]
-    eligible.sort(key=lambda a: (ranking_score(a, today, scoring), a.published), reverse=True)
-    main = [a for a in eligible if not a.exploration or a.category == "政策"]
-    exploration = [a for a in eligible if a.category != "政策" and a.exploration]
+    eligible = [a for a in eligible if shortlist_score(a, today, scoring) > 0 and ranking_score(a, today, scoring) > 0]
+    eligible.sort(key=lambda a: (shortlist_score(a, today, scoring), a.published, a.identity), reverse=True)
     cap = min(7, cfg["max_items"])
     category_cap = cfg.get('max_category_items', 3)
-    def fits(item, chosen):
+    def fits(item, chosen, relaxed=False):
         limit = min(category_cap, cfg.get('max_academic_items', 3)) if item.category == '学术' else category_cap
+        limit += int(relaxed)
         return (sum(a.category == item.category for a in chosen) < limit and
-                all(sum(key in company_keys(a, scoring) for a in chosen) < cfg.get('max_company_items', 2)
+                all(sum(key in company_keys(a, scoring) for a in chosen) < cfg.get('max_company_items', 2) + int(relaxed)
                     for key in company_keys(item, scoring)))
-    picks = []
-    for item in main:
-        if not fits(item, picks):
-            continue
-        picks.append(item)
-        if len(picks) == cap:
+    # First stage: relevance × age, with a soft diversity limit (4/direction,
+    # 3/company) so the ten-item pool is not monopolized by one actor/topic.
+    limit = cfg.get('shortlist_items', 10)
+    shortlist = []
+    for item in eligible:
+        if fits(item, shortlist, relaxed=True):
+            shortlist.append(item)
+        if len(shortlist) == limit:
             break
-    counts = state.get("counts", {"total": 0, "exploration": 0})
-    allowance = int((counts["total"] + len(picks)) * cfg["exploration_ratio"]) - counts["exploration"]
-    if exploration and allowance > 0:
-        for item in exploration:
-            alternatives = ([picks] if len(picks) < cap else []) + [picks[:i] + picks[i+1:] for i in range(len(picks)-1, -1, -1)]
-            retained = next((chosen for chosen in alternatives if fits(item, chosen)), None)
-            if retained is not None:
-                picks = retained + [item]
+    for item in eligible:
+        if len(shortlist) >= limit:
+            break
+        if item not in shortlist:
+            shortlist.append(item)
+    def final_selection():
+        ordered = sorted(shortlist, key=lambda a: (ranking_score(a, today, scoring), shortlist_score(a, today, scoring), a.identity), reverse=True)
+        result = []
+        for item in ordered:
+            if fits(item, result):
+                item.recommendation_score = ranking_score(item, today, scoring)
+                result.append(item)
+            if len(result) == cap:
                 break
-    return sorted(picks, key=lambda a: (ranking_score(a, today, scoring), a.published), reverse=True)
+        return result
+    picks = final_selection()
+    for item in eligible:
+        if len(picks) >= cap:
+            break
+        if item not in shortlist:
+            shortlist.append(item)
+            picks = final_selection()
+    return picks
 
 
 def short_text(text, limit=100):
@@ -270,15 +286,22 @@ def display_summary(text, title=""):
 
 
 def summarize(item, provider, state, today):
-    version = '100-v4-source-evidence-retry'
+    version = '100-v5-subject-first'
     item.capture_source()
+    def subject_first(text):
+        return item.subject + '：' + text if item.subject and not text.startswith(item.subject) else text
     if display_summary(item.summary, item.title) and (item.summary_kind != 'ai' or item.summary_version == version):
-        return
+        front = subject_first(item.summary)
+        if display_summary(front, item.title):
+            if front != item.summary and item.summary_kind != 'ai':
+                item.summary_kind = 'formatted'
+            item.summary = front
+            return
     source_summary = item.source_summary if usable_summary(item.source_summary, item.title) else ""
     paragraphs = (item.body or item.source_excerpt).splitlines()
     evidence = source_summary[:6000] or "\n".join(paragraphs[:4] + [p for p in paragraphs[4:] if match_rules("", "", p, item.matches)])[:6000]
-    signature = digest(item.title + evidence)
-    cache_key = "summary-v4:" + item.identity
+    signature = digest(item.title + evidence + item.subject)
+    cache_key = "summary-v5:" + item.identity
     cached = state.get(cache_key)
     if cached and cached.get("evidence") == signature and display_summary(cached.get("summary", ""), item.title):
         item.summary = cached["summary"]
@@ -290,16 +313,20 @@ def summarize(item, provider, state, today):
         state.error(today, "摘要", QualityError("summary_insufficient_evidence"))
         return
     try:
-        value = provider.chat('只根据原始材料写中文事实摘要，摘要单独计算，含标点不超过100个字符；标题、日期、标签、来源与链接不计入。材料充分时目标70至100字，说明主体、事件、关键数据和必要限定；材料不足可更短，严禁扩写无依据的事实。保留重要数字和不确定性。区分报道日期与事件日期，历史政策解读须注明解读或回顾，不得写成刚发布。不要理由、评分或链接。返回 {"summary":"..."}。',
-                              {"title": item.title, "evidence": evidence})
+        value = provider.chat('只根据原始材料写中文事实摘要，摘要单独计算，含标点不超过100个字符；标题、日期、标签、来源与链接不计入。材料充分时目标70至100字。必须以subject指定的事件主体开头，再写动作和结果；不是以报道媒体开头。论文有机构/教授团队就写清；没有明确姓名不得猜测。subject为空时只使用证据中明确的主体。材料不足可更短，严禁扩写无依据的事实。保留重要数字和不确定性。区分报道日期与事件日期，历史政策解读须注明解读或回顾，不得写成刚发布，不随意使用今日。不要理由、评分或链接。返回 {"summary":"..."}。',
+                              {"title": item.title, "evidence": evidence, 'subject': item.subject})
         summary = value.get("summary")
+        if isinstance(summary, str):
+            summary = subject_first(summary.strip())
         if isinstance(summary, str) and len(summary.strip()) > 100:
             state.error(today, '摘要压缩重试', QualityError('summary_over_limit', characters=len(summary.strip())))
             value = provider.chat('根据原始证据压缩草稿。只保留证据支持的核心事实，不添加或推测。'
                                   '中文摘要含标点70至100字符，材料不足可更短。删去次要细节以确保不超过100字符。'
-                                  '只返回 {"summary":"..."}。',
-                                  {'title': item.title, 'evidence': evidence, 'draft': summary[:1000]})
+                                  '以subject事件主体开头，不猜测姓名。只返回 {"summary":"..."}。',
+                                  {'title': item.title, 'evidence': evidence, 'draft': summary[:1000], 'subject': item.subject})
             summary = value.get('summary')
+            if isinstance(summary, str):
+                summary = subject_first(summary.strip())
         if not isinstance(summary, str) or not display_summary(summary.strip(), item.title):
             raise QualityError("summary_invalid_or_over_100")
         item.summary = summary.strip()
@@ -354,6 +381,7 @@ def render(items, events, today):
         flag = " · 探索" if item.exploration else ""
         names = list(dict.fromkeys(s["name"] for s in item.sources))
         lines += [f"**{n}. [{item.category}] {escape(item.display_title or item.title)}**",
+                  '推荐指数：' + star_text(item.recommendation_score if item.recommendation_score is not None else ranking_score(item, today)),
                   f"{item.published[:10]} · {tags}{flag}", escape(short_text(item.summary)),
                   f"（来源：{'、'.join(escape(n) for n in names[:5])}）[原文]({item.url.replace(')', '%29').replace('(', '%28')})", ""]
     for event in events[:3]:
