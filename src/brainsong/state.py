@@ -118,6 +118,27 @@ class State:
                             [(k, today.isoformat(), status) for a in items if a.category == '政策' for k in a.aliases()])
         self.db.commit()
 
+    def reset_delivery_once(self, backup_path, today):
+        """Explicit formal-launch migration, not a normal startup/reset operation."""
+        marker = 'deployment:official-history-reset'
+        if self.get(marker):
+            return False
+        if self.db.execute("SELECT 1 FROM delivered WHERE status='pending' UNION ALL SELECT 1 FROM policy_delivered WHERE status='pending'").fetchone():
+            raise RuntimeError('存在未确认发送，先核实后才能重置')
+        backup = Path(backup_path)
+        if backup.exists():
+            raise RuntimeError('备份已存在，停止以免覆盖')
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(backup) as target:
+            self.db.backup(target)
+        with self.db:
+            self.db.execute('DELETE FROM delivered')
+            self.db.execute('DELETE FROM policy_delivered')
+            self.db.execute("DELETE FROM kv WHERE key LIKE 'report:%' OR key='counts'")
+            self.db.execute('INSERT INTO kv VALUES (?,?)',
+                            (marker,json.dumps({'day':str(today)},ensure_ascii=False)))
+        return True
+
     def error(self, today, stage, exc):
         # Never store HTTP bodies, headers, raw exception messages, keys or webhook URLs.
         detail = type(exc).__name__ if isinstance(exc, Exception) else str(exc)[:100]

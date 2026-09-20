@@ -8,7 +8,7 @@ import yaml
 
 from repo_courier.pushers.feishu import FeishuPusher
 from .collect import Reader, bing_news, collect_source, collect_wechat, from_search, metadata
-from .editor import compact_title, display_summary, usable_summary, merge, merge_event_reports, prepare, relevance_filter, render, select, summarize
+from .editor import compact_title, display_summary, usable_summary, merge, merge_event_reports, prepare, relevance_filter, render, select, summarize, fill_link_only
 from .events import verify_events
 from .model import Article, digest, ranking_score, shortlist_score, freshness_factor, source_factor, star_text
 from .provider import OfficialGLM
@@ -253,6 +253,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             progress('direction ' + category, ready=sum(a.category == category for a in picks),
                      remaining_ready=sum(a.category == category and bool(a.published) and
                                          (usable_summary(a.summary, a.title) or bool(a.body)) for a in remaining))
+    picks = fill_link_only(picks, [a for a in accepted if a.identity in rejected], state, today, cfg)
     progress('selection complete', inspected=cursor, analysed=analysed, deferred=len(remaining), ready=len(picks))
     return pool, picks
 

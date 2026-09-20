@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 
 from repo_courier.feeds import business_score
 from repo_courier.matching import contains, match_rules, normalize
-from .model import digest, title_key, dictionary_result, ranking_score, shortlist_score, company_keys, star_text
+from .model import digest, title_key, dictionary_result, ranking_score, shortlist_score, company_keys, star_text, freshness_factor, canonical
 from .provider import QualityError, assess
 
 
@@ -243,24 +243,61 @@ def select(items, state, today, cfg):
             break
         if item not in shortlist:
             shortlist.append(item)
-    def final_selection():
-        ordered = sorted(shortlist, key=lambda a: (ranking_score(a, today, scoring), shortlist_score(a, today, scoring), a.identity), reverse=True)
-        result = []
-        for item in ordered:
-            if fits(item, result):
-                item.recommendation_score = ranking_score(item, today, scoring)
-                result.append(item)
-            if len(result) == cap:
+    def fill(candidates, locked):
+        result = list(locked)
+        remaining = list(candidates)
+        while remaining and len(result) < cap:
+            # Each category nominates its best article in its freshest time tier.
+            heads = {}
+            for item in remaining:
+                if not fits(item, result):
+                    continue
+                key = (freshness_factor(item, today, scoring), ranking_score(item, today, scoring),
+                       shortlist_score(item, today, scoring), item.identity)
+                prior = heads.get(item.category)
+                if prior is None or key > prior[0]:
+                    heads[item.category] = (key, item)
+            if not heads:
                 break
+            chosen = max((row[1] for row in heads.values()),
+                         key=lambda a: (ranking_score(a,today,scoring), shortlist_score(a,today,scoring), a.identity))
+            chosen.recommendation_score = ranking_score(chosen,today,scoring)
+            result.append(chosen)
+            remaining.remove(chosen)
         return result
-    picks = final_selection()
-    for item in eligible:
-        if len(picks) >= cap:
-            break
-        if item not in shortlist:
-            shortlist.append(item)
-            picks = final_selection()
+    picks = fill(shortlist, [])
+    # Refill vacant slots only; old candidates cannot evict already selected news.
+    picks = fill([a for a in eligible if a not in shortlist], picks)
+    picks.sort(key=lambda a: (ranking_score(a,today,scoring), shortlist_score(a,today,scoring),a.identity),reverse=True)
     return picks
+
+
+def fill_link_only(picks, failed, state, today, cfg):
+    """Only after full-summary candidates are exhausted; never displace a good summary."""
+    result = list(picks)
+    scoring = cfg.get('scoring', {})
+    seen = {a.identity for a in result}
+    for item in sorted(failed, key=lambda a: (ranking_score(a,today,scoring),shortlist_score(a,today,scoring),a.identity),reverse=True):
+        if len(result) >= min(7,cfg['max_items']):
+            break
+        if (item.identity in seen or not item.accepted or item.relevance is None or item.relevance < 60
+                or item.summary_kind != 'failed' or not canonical(item.url) or not item.title.strip()
+                or state.sent(item) or state.deleted(item) or not item.in_window(today,cfg['windows'])
+                or ranking_score(item,today,scoring) <= 0 or shortlist_score(item,today,scoring) <= 0):
+            continue
+        limit = cfg.get('max_category_items',3)
+        if item.category == '学术':
+            limit = min(limit,cfg.get('max_academic_items',3))
+        if sum(a.category == item.category for a in result) >= limit:
+            continue
+        if any(sum(k in company_keys(a,scoring) for a in result) >= cfg.get('max_company_items',2)
+               for k in company_keys(item,scoring)):
+            continue
+        item.summary = ''
+        item.recommendation_score = ranking_score(item,today,scoring)
+        result.append(item)
+        seen.add(item.identity)
+    return result
 
 
 def short_text(text, limit=100):
@@ -388,7 +425,10 @@ def render(items, events, today):
         names = list(dict.fromkeys(s["name"] for s in item.sources))
         lines += [f"**{n}. [{item.category}] {escape(item.display_title or item.title)}**",
                   '推荐指数：' + star_text(item.recommendation_score if item.recommendation_score is not None else ranking_score(item, today)),
-                  f"{item.published[:10]} · {tags}{flag}", escape(short_text(item.summary)),
+                  f"{item.published[:10]} · {tags}{flag}"]
+        if item.summary:
+            lines.append(escape(short_text(item.summary)))
+        lines += [
                   f"（来源：{'、'.join(escape(n) for n in names[:5])}）[原文]({item.url.replace(')', '%29').replace('(', '%28')})", ""]
     for event in events[:3]:
         lines += [f"[展会] {escape(event['name'])}｜{event['date']}｜{escape(event['place'])}｜{escape(event['kind'])}",
