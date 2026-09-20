@@ -15,6 +15,7 @@ from .provider import OfficialGLM
 from .secrets import api_key
 from .state import State
 from .progress import Progress
+from .acquisition import business_context, source_priority, date_priority, estimated_relevance
 
 
 def load(root):
@@ -23,6 +24,15 @@ def load(root):
     rules = yaml.safe_load((root / "config/keywords.yaml").read_text(encoding="utf-8"))
     sources = yaml.safe_load((root / "config/sources.yaml").read_text(encoding="utf-8"))
     events = json.loads((root / "config/events.json").read_text(encoding="utf-8"))
+    for example in cfg.get('relevance_examples', []):
+        if not isinstance(example.get('text'), str) or type(example.get('score')) is not int or not 0 <= example['score'] <= 100:
+            raise ValueError('相关性评分示例格式错误')
+    for hint in cfg.get('acquisition', {}).get('priority_hints', []):
+        import re
+        if type(hint.get('score')) is not int or not 0 <= hint['score'] <= 100 or not hint.get('all'):
+            raise ValueError('采集优先级规则错误')
+        for pattern in hint['all']:
+            re.compile(pattern)
     for rule in rules["rules"]:
         if not 1 <= rule["weight"] <= 100 or not rule["groups"] or not all(
                 isinstance(g, list) and g and all(isinstance(w, str) and w.strip() for w in g) for g in rule["groups"]):
@@ -95,7 +105,7 @@ def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
 
 
 def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploration_due=False):
-    """Prioritize evidence-ready, underfilled directions without output quotas."""
+    """Recent business-relevant evidence first; convenience cannot outrank value."""
     def needs_read(a):
         return not a.published or (not usable_summary(a.summary, a.title) and not a.body)
     def full(a):
@@ -117,8 +127,11 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
         def priority(a):
             evidence_level = 2 if not a.published else 1 if needs_read(a) else 0
             representation = sum(p.category == a.category for p in picks + result)
-            return (full(a), evidence_level, representation, not (a.exploration and exploration_due),
-                    -estimate(a), -max((r['weight'] for r in a.matches), default=0), a.identity)
+            recent = date_priority(a) if cfg.get('acquisition', {}).get('recency_first') else 0
+            return (full(a), not (a.exploration and exploration_due),
+                    estimated_relevance(a, cfg) < 60,
+                    -recent,
+                    -estimate(a), -source_priority(a, cfg), representation, evidence_level, a.identity)
         chosen = min(candidates, key=priority)
         candidates.remove(chosen)
         result.append(chosen)
@@ -128,10 +141,10 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
 def process_candidates(items, cfg, rules, exclusions, state, provider, reader, today,
                        progress, *, offline=False, no_ai=False):
     """Retain everything; spend enrichment and AI work only on priority batches."""
-    pool = merge(items)
+    pool = merge([a for a in items if not state.deleted(a)])
     queue = []
     for item in pool:
-        if not prepare(item, rules, exclusions) or state.sent(item):
+        if not prepare(item, rules, exclusions) or state.sent(item) or not business_context(item, cfg):
             continue
         # Dates already known to be outside the window need no page request.
         if item.published and not item.in_window(today, cfg['windows']):
@@ -139,7 +152,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         queue.append(item)
     scoring = cfg.get('scoring', {})
     def estimate(item):
-        weight = max((r['weight'] for r in item.matches), default=20)
+        weight = estimated_relevance(item, cfg)
         return weight * (freshness_factor(item, today, scoring) if item.published else 0)
     queue.sort(key=lambda a: (a.exploration, -estimate(a),
                              a.category == '学术', a.category != '政策', a.identity))
@@ -204,7 +217,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             if not item.published:
                 state.error(today, '文章日期:' + item.url, 'missing_date')
                 continue
-            if prepare(item, rules, exclusions) and item.in_window(today, cfg['windows']):
+            if prepare(item, rules, exclusions) and business_context(item, cfg) and item.in_window(today, cfg['windows']):
                 batch.append(item)
         analysed += len(batch)
         accepted.extend(relevance_filter(batch, provider, cfg, rules, state, today) if ai

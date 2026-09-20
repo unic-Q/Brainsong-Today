@@ -19,6 +19,7 @@ class State:
             id TEXT PRIMARY KEY, first_seen TEXT, last_seen TEXT, released TEXT, payload TEXT);
         CREATE TABLE IF NOT EXISTS delivered(alias TEXT PRIMARY KEY, day TEXT, status TEXT);
         CREATE TABLE IF NOT EXISTS policy_delivered(alias TEXT PRIMARY KEY, day TEXT, status TEXT);
+        CREATE TABLE IF NOT EXISTS deleted_candidates(alias TEXT PRIMARY KEY);
         CREATE INDEX IF NOT EXISTS delivered_date ON delivered(day);
         CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT);
         CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY, day TEXT, stage TEXT, detail TEXT);
@@ -37,6 +38,8 @@ class State:
         self.db.commit()
 
     def save(self, item):
+        if self.deleted(item):
+            return
         self.db.execute("INSERT OR REPLACE INTO articles VALUES (?,?,?)",
                         (item.identity, item.published, json.dumps(item.record(), ensure_ascii=False)))
         self.db.commit()
@@ -48,6 +51,8 @@ class State:
     def retain_candidates(self, items, today):
         """Checkpoint source evidence BEFORE filtering/AI; never replace with AI summaries."""
         for item in items:
+            if self.deleted(item):
+                continue
             value = item.record()
             value['summary'] = value['source_summary']
             value['summary_kind'] = 'source'
@@ -69,16 +74,38 @@ class State:
         self.db.commit()
 
     def candidates(self):
-        return [Article(**json.loads(r[0])) for r in self.db.execute('SELECT payload FROM candidate_inputs')]
+        return [a for r in self.db.execute('SELECT payload FROM candidate_inputs')
+                if not self.deleted(a := Article(**json.loads(r[0])))]
+
+    def deleted(self, item):
+        return any(self.db.execute('SELECT 1 FROM deleted_candidates WHERE alias=?', (k,)).fetchone()
+                   for k in item.aliases())
+
+    def delete_candidates(self, items):
+        """Erase candidate material, keeping only permanent non-revival fingerprints."""
+        items = list(items)
+        if not items:
+            return
+        with self.db:
+            self.db.executemany('INSERT OR IGNORE INTO deleted_candidates VALUES (?)',
+                                [(k,) for a in items for k in a.aliases()])
+            for table in ('candidate_inputs', 'articles'):
+                ids = [key for key, payload in self.db.execute(f'SELECT id,payload FROM {table}')
+                       if self.deleted(Article(**json.loads(payload)))]
+                self.db.executemany(f'DELETE FROM {table} WHERE id=?', [(key,) for key in ids])
+                for key in ids:
+                    self.db.executemany('DELETE FROM kv WHERE key=?',
+                                        [(prefix + key,) for prefix in ('ai:', 'summary-v2:', 'summary-v3:', 'summary-v4:', 'summary-v5:')])
 
     def release_candidates(self, today):
-        """Only after a complete briefing is confirmed delivered. Retain another 30 days."""
+        """Record successful delivery; expiry remains based on publication/first seen."""
         self.db.execute('UPDATE candidate_inputs SET released=? WHERE released IS NULL', (str(today),))
         self.db.commit()
 
     def recent(self, today):
-        return [Article(**json.loads(r[0])) for r in self.db.execute(
-            "SELECT payload FROM articles WHERE published>=? OR json_extract(payload,'$.category')='政策'", ((today-timedelta(days=30)).isoformat(),))]
+        return [a for r in self.db.execute(
+            "SELECT payload FROM articles WHERE published>=? OR json_extract(payload,'$.category')='政策'", ((today-timedelta(days=30)).isoformat(),))
+                if not self.deleted(a := Article(**json.loads(r[0])))]
 
     def sent(self, item):
         return any(self.db.execute("SELECT 1 FROM delivered WHERE alias=? AND status IN ('sent','pending') UNION ALL SELECT 1 FROM policy_delivered WHERE alias=? AND status IN ('sent','pending')", (k, k)).fetchone()
@@ -106,9 +133,13 @@ class State:
             self.progress('error ' + stage.split(':', 1)[0] + ' ' + detail.split(' ', 1)[0])
 
     def prune(self, today):
-        self.db.execute("DELETE FROM candidate_inputs WHERE released IS NOT NULL AND released<? AND json_extract(payload,'$.category')!='政策'",
-                        ((today-timedelta(days=30)).isoformat(),))
-        self.db.execute("DELETE FROM articles WHERE published<? AND json_extract(payload,'$.category')!='政策'", ((today-timedelta(days=30)).isoformat(),))
+        cutoff = (today-timedelta(days=30)).isoformat()
+        expired = [Article(**json.loads(payload)) for first_seen, payload in
+                   self.db.execute('SELECT first_seen,payload FROM candidate_inputs')
+                   if (json.loads(payload).get('published') or first_seen)[:10] <= cutoff]
+        expired.extend(Article(**json.loads(payload)) for (payload,) in self.db.execute(
+            "SELECT payload FROM articles WHERE published!='' AND substr(published,1,10)<=?", (cutoff,)))
+        self.delete_candidates(expired)
         self.db.execute("DELETE FROM errors WHERE day<?", ((today-timedelta(days=90)).isoformat(),))
         self.db.execute("DELETE FROM delivered WHERE day<? AND status!='pending'", ((today-timedelta(days=365)).isoformat(),))
         cutoff = (today-timedelta(days=30)).isoformat()

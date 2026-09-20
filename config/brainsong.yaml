@@ -3,8 +3,35 @@ profile: >-
   主要应用于教育、睡眠和情绪。最高优先级是脑机接口和脑电大模型；高优先级包括耳周EEG、脑电耳机、
   教育与耳机结合、脑电数据采集/存储/数据集。也关注干电极、芯片和渠道等可复用供应链，以及新兴企业。
   权重表达我们研发和商业决策的重要程度，不是大众热度。单纯教育新闻不能入选；耳机与教育应用相关才有价值。
-  关注国家及行业政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管。不关注公司注册地/研发地补贴。
+  关注国家及行业政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管。
+  脑机接口专项产业扶持、落地补贴和产业基金也相关，不因地方政策而排除；不关注与脑机行业无关的普通注册补贴。
   医疗不是我们的主营用途，但共用脑电技术和适用监管可关注。探索内容必须有合理业务邻近性，不能用无关内容凑数。
+relevance_examples:
+  - {text: '非侵入式脑电耳机企业面向睡眠和专注力获得5000万元A轮融资', score: 80}
+  - {text: '植入式脑机企业帮助瘫痪患者交流，获得5亿元融资', score: 50}
+  - {text: '通用机器人控制芯片企业融资10亿元，不涉及脑电', score: 0}
+  - {text: '脑机企业聘知名神经科学教授任首席科学家，没有新产品', score: 40}
+  - {text: '消费级耳周EEG耳机发布，开放开发者数据接口', score: 100}
+  - {text: '大型品牌普通降噪耳机音质续航升级，无脑电或教育应用', score: 50}
+  - {text: '课堂耳机支持听觉训练和教师管理，不采集脑电', score: 80}
+  - {text: '脑电基础模型跨数据集效果提升，开放模型和代码', score: 90}
+  - {text: '植入式脑机同步解码瘫痪患者言语和手势', score: 30}
+  - {text: '脑电认知负荷课堂90人应用试验，未公开代码', score: 10}
+  - {text: '国家神经数据隐私与未成年人保护要求覆盖消费级脑电', score: 100}
+  - {text: '省级脑机产业扶持，包含当地落地补贴、税惠和产业基金', score: 70}
+acquisition:
+  recency_first: true
+  # Acquisition estimates only, never final relevance scores or hard rejection rules.
+  priority_hints:
+    - {all: ['脑电|EEG', '课堂|classroom', '认知负荷|cognitive load', '试验|实验|trial|study', '未公开代码|未开源|no open.source'], score: 10}
+    - {all: ['非侵入|non.invasive', '脑电|EEG', '融资|funding|raises'], score: 80}
+    - {all: ['(?<!非)植入|(?<!非)侵入|\bimplant(?:ed|able)?\b|(?<!non-)(?<!non )\binvasive\b|\bECoG\b', '融资|funding|raises'], score: 50}
+    - {all: ['植入|侵入|implant|ECoG', '瘫痪|paralysis', '言语|手势|speech|gesture'], score: 30}
+    - {all: ['脑机|BCI', '聘|任命|appoint', '科学家|教授|scientist|professor'], score: 40}
+    - {all: ['脑机|脑电|BCI', '专项|产业|industrial', '补贴|扶持|基金|subsid|fund'], score: 70}
+    - {all: ['神经数据|脑电数据|neural data', '隐私|未成年人|privacy|minor'], score: 100}
+    - {all: ['脑电|EEG', '大模型|基础模型|foundation model'], score: 90}
+    - {all: ['耳机|headphone|headset', '课堂|教育|听觉训练|classroom|education'], score: 80}
 max_items: 7
 shortlist_items: 10
 max_academic_items: 3
@@ -49,13 +76,16 @@ scoring:
     柔灵科技: [柔灵科技, 柔灵]
     Apple: [Apple, 苹果公司, 苹果]
     Sony: [Sony, 索尼]
+    Nimbus: [Nimbus, Nimbus Studio]
+    Neurosity: [Neurosity]
+    BrainFlow: [BrainFlow]
 exploration_ratio: 0.10
 short_body_chars: 300
 windows: {行业: 30, 资本: 30, 学术: 30, 政策: 30}
 ai:
   enabled: true
   model: glm-5.3-flash
-  batch_size: 6
+  batch_size: 3
   candidates: 36
 search_enabled: true
 supplement_queries:

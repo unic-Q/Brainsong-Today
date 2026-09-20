@@ -17,6 +17,8 @@ def category_hint(item):
         return "学术"
     if re.search(r"融资|并购|收购|天使轮|种子轮|[ABCDEF]轮|funding|raises|acquisition", text, re.I):
         return "资本"
+    if re.search(r'论文|研究团队|研究者|实验组|试验|准确率|解码|模型|dataset|decoding|accuracy|paper|study', text, re.I) and not re.search(r'融资|新品|SDK|产品发布|版本更新|release|launch|studio', text, re.I):
+        return "学术"
     return "行业"
 
 
@@ -88,7 +90,10 @@ def merge(items):
 def relevance_filter(items, provider, cfg, rules, state, today):
     # Cache includes profile and rule content: changing preferences invalidates scores.
     import json
-    signature = digest(json.dumps(["assessment-v5-subject", cfg["profile"], rules], ensure_ascii=False, sort_keys=True))
+    profile = cfg['profile']
+    if cfg.get('relevance_examples'):
+        profile += '\n用户最新相关性评分锚点（优先于通用偏好；不是已发生的新闻）：' + json.dumps(cfg['relevance_examples'], ensure_ascii=False)
+    signature = digest(json.dumps(["assessment-v6-calibrated", profile, rules], ensure_ascii=False, sort_keys=True))
     pending = []
     for item in items:
         evidence_hash = digest(item.title + (item.summary or item.body)[:700])
@@ -106,7 +111,7 @@ def relevance_filter(items, provider, cfg, rules, state, today):
         while queue:
             remaining, attempt = queue.pop(0)
             try:
-                rows = assess(provider, [x[0] for x in remaining], cfg["profile"], rules,
+                rows = assess(provider, [x[0] for x in remaining], profile, rules,
                               evidence_limit=700 if attempt == 0 else 350)
                 if rows.issues:
                     state.error(today, "AI相关性筛选", QualityError("/".join(rows.issues), expected=len(remaining), valid=len(rows), attempt=attempt+1))
@@ -214,7 +219,8 @@ def select(items, state, today, cfg):
     eligible = [a for a in items if a.accepted and a.in_window(today, cfg["windows"]) and not state.sent(a)]
     scoring = cfg.get('scoring', {})
     eligible = [a for a in eligible if shortlist_score(a, today, scoring) > 0 and ranking_score(a, today, scoring) > 0]
-    eligible.sort(key=lambda a: (shortlist_score(a, today, scoring), a.published, a.identity), reverse=True)
+    eligible.sort(key=lambda a: ((a.first_reported or a.published)[:10] if cfg.get('acquisition', {}).get('recency_first') else '',
+                                shortlist_score(a, today, scoring), a.published, a.identity), reverse=True)
     cap = min(7, cfg["max_items"])
     category_cap = cfg.get('max_category_items', 3)
     def fits(item, chosen, relaxed=False):

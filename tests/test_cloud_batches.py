@@ -82,11 +82,11 @@ def test_full_academic_direction_yields_to_industry_and_capital():
     assert batch == [industry, capital] or batch == [capital, industry]
 
 
-def test_direction_round_robin_before_one_direction_consumes_batch():
+def test_quality_precedes_forced_direction_round_robin():
     papers = [make_item(i, '学术') for i in range(20)]
     other = [make_item(30), make_item(31), make_item(32)]
     batch = pipeline.direction_batch(papers+other, [], {}, lambda a: 100 if a.category == '学术' else 70, 6)
-    assert {a.category for a in batch[:4]} == {'行业', '资本', '政策', '学术'}
+    assert all(a.category == '学术' for a in batch)
 
 
 def test_skipped_metadata_does_not_spend_ai_budget(tmp_path, monkeypatch):

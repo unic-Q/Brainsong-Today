@@ -15,6 +15,19 @@ DAY = date(2026, 9, 17)
 RULE = {'id':'eeg','weight':100,'groups':[['脑电']],'purpose':'业务相关','direct':True}
 
 
+def test_low_effort_and_three_item_configuration():
+    import json
+    def handler(request):
+        data = json.loads(request.content)
+        assert data['reasoning_effort'] == 'low'
+        assert data['max_tokens'] == 4096
+        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':'{}'}}]})
+    p = OfficialGLM('fake',client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert p.chat('test',{}) == {}
+    assert load(ROOT)[0]['ai']['batch_size'] == 3
+    p.client.close()
+
+
 def article(i=1, **kwargs):
     return Article('脑电耳机研发更新'+str(i), f'https://example.org/{i}', DAY.isoformat(), '测试', matches=[RULE], **kwargs)
 

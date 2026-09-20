@@ -58,7 +58,7 @@ def test_length_failure_retries_smaller_inputs_and_batches(tmp_path):
     ai = AI()
     state = State(tmp_path/'test.db')
     assert len(relevance_filter(rows, ai, cfg, policy['rules'], state, DAY)) == 4
-    assert ai.calls == [(4, 700), (2, 350), (2, 350)]
+    assert ai.calls == [(3, 700), (1, 350), (1, 350), (1, 350), (1, 700)]
     state.close()
 
 

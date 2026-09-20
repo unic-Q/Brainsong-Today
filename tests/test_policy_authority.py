@@ -51,7 +51,8 @@ def test_policy_delivery_survives_year_and_title_changes(tmp_path):
     b = item('https://example.org/reprint')
     b.title = '大学参与起草 YY/T 2029-2026 行业标准'
     assert state.sent(b)
-    assert len(state.recent(DAY+timedelta(days=500))) == 1
+    assert not state.recent(DAY+timedelta(days=500))
+    assert state.deleted(a)
     cfg = {'max_items':7, 'windows':{'政策':30},'exploration_ratio':.1}
     assert select([a], state, DAY, cfg) == []
     state.close()
