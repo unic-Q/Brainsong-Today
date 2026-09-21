@@ -85,6 +85,6 @@ def test_reset_does_not_clear_deleted_fingerprints_or_pending_delivery(tmp_path)
 
 def test_schedule_is_gated_and_reset_never_scheduled():
     workflow=(ROOT/'.github/workflows/daily.yml').read_text(encoding='utf-8')
-    assert '0 1 * * *' in workflow
+    assert '47 0 * * *' in workflow
     assert "vars.BRAINSONG_FORMAL_READY == 'true'" in workflow
     assert "github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once" in workflow
