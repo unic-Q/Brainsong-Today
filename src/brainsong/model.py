@@ -68,15 +68,25 @@ def source_factor(item, scoring=None):
     return (authority * weights['authority'] + recognition * weights['recognition']) / 100
 
 
-def shortlist_score(item, today: date, scoring=None) -> float:
+def category_factor(item, scoring=None) -> float:
+    """Business-priority multiplier shared by both independent score stages."""
+    weights = (scoring or {}).get('category_weights', {})
+    return float(weights.get(item.category, 1.0))
+
+
+def effective_relevance(item, scoring=None) -> float:
+    """Weighted relevance, capped once; callers must not compound the factor."""
     base = item.relevance if item.relevance is not None else item.score
-    return round(base * freshness_factor(item, today, scoring), 4)
+    return min(100.0, max(0.0, base * category_factor(item, scoring)))
+
+
+def shortlist_score(item, today: date, scoring=None) -> float:
+    return round(effective_relevance(item, scoring) * freshness_factor(item, today, scoring), 4)
 
 
 def ranking_score(item, today: date, scoring=None) -> float:
     # Never mutate base score: repeated selection must not compound decay.
-    base = item.relevance if item.relevance is not None else item.score
-    return round(base * source_factor(item, scoring), 4)
+    return round(effective_relevance(item, scoring) * source_factor(item, scoring), 4)
 
 
 def star_text(score):

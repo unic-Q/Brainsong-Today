@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 from difflib import SequenceMatcher
+from urllib.parse import urlsplit
 
 from repo_courier.feeds import business_score
 from repo_courier.matching import contains, match_rules, normalize
-from .model import digest, title_key, dictionary_result, ranking_score, shortlist_score, company_keys, star_text, freshness_factor, canonical
+from .model import digest, title_key, dictionary_result, ranking_score, shortlist_score, company_keys, star_text, freshness_factor, canonical, effective_relevance
 from .provider import QualityError, assess
 
 
@@ -101,7 +102,7 @@ def relevance_filter(items, provider, cfg, rules, state, today):
         cached = state.get(cache_key)
         if cached and cached["signature"] == signature and cached["evidence"] == evidence_hash:
             row = cached["row"]
-            apply_assessment(item, row)
+            apply_assessment(item, row, cfg.get('scoring'), cfg.get('policy_scope'))
         else:
             pending.append((item, cache_key, evidence_hash))
     batch_size = min(6, cfg["ai"]["batch_size"])
@@ -124,7 +125,7 @@ def relevance_filter(items, provider, cfg, rules, state, today):
                     item.accepted, item.relevance, item.score = False, None, 0
                     failed.append((item, key, evidence))
                     continue
-                apply_assessment(item, rows[item.identity])
+                apply_assessment(item, rows[item.identity], cfg.get('scoring'), cfg.get('policy_scope'))
                 state.put(key, {"signature": signature, "evidence": evidence,
                                 "row": rows[item.identity], "day": today.isoformat()})
             # Retry only failures. Smaller batches and clipped INPUT evidence
@@ -135,10 +136,27 @@ def relevance_filter(items, provider, cfg, rules, state, today):
     return [a for a in items if a.accepted]
 
 
-def apply_assessment(item, row):
+def china_policy_evidence(item) -> bool:
+    """Require affirmative Chinese jurisdiction evidence for policy items."""
+    host = (urlsplit(item.url).hostname or '').lower()
+    if host == 'gov.cn' or host.endswith('.gov.cn'):
+        return True
+    text = ' '.join((item.title, item.summary, item.body[:700], item.source))
+    national = (r'中国|我国|国务院|全国人大|国家(?:药监局|市场监管总局|卫生健康委|卫健委|发改委|网信办|标准委|知识产权局)|'
+                r'教育部|科技部|工信部|工业和信息化部|财政部|民政部|人力资源和社会保障部')
+    local = (r'北京|天津|上海|重庆|河北|山西|辽宁|吉林|黑龙江|江苏|浙江|安徽|福建|江西|山东|河南|湖北|湖南|广东|'
+             r'海南|四川|贵州|云南|陕西|甘肃|青海|内蒙古|广西|西藏|宁夏|新疆|香港|澳门')
+    return bool(re.search(national, text) or re.search(local + r'(?:省|市|区|自治区|特别行政区)?(?:政府|药监|监管|卫健|工信|发改|教育|科技)', text))
+
+
+def apply_assessment(item, row, scoring=None, policy_scope=None):
     item.relevance = row["relevance"]
-    item.accepted = row["accept"] and row["relevance"] >= 60
     item.category = row["category"]
+    # A category boost can admit a near-threshold business item, but never
+    # override an explicit AI rejection.
+    item.accepted = row["accept"] and effective_relevance(item, scoring) >= 60
+    if item.category == '政策' and policy_scope == 'china' and not china_policy_evidence(item):
+        item.accepted = False
     item.tags = [re.sub(r"[\[\]<>\n]", "", t)[:18] for t in row["tags"][:3]]
     item.score = business_score(item.matches, item.relevance)
     evidence = item.title + ' ' + (item.summary or item.body)[:700]
@@ -280,7 +298,7 @@ def fill_link_only(picks, failed, state, today, cfg):
     for item in sorted(failed, key=lambda a: (ranking_score(a,today,scoring),shortlist_score(a,today,scoring),a.identity),reverse=True):
         if len(result) >= min(7,cfg['max_items']):
             break
-        if (item.identity in seen or not item.accepted or item.relevance is None or item.relevance < 60
+        if (item.identity in seen or not item.accepted or item.relevance is None or effective_relevance(item, scoring) < 60
                 or item.summary_kind != 'failed' or not canonical(item.url) or not item.title.strip()
                 or state.sent(item) or state.deleted(item) or not item.in_window(today,cfg['windows'])
                 or ranking_score(item,today,scoring) <= 0 or shortlist_score(item,today,scoring) <= 0):

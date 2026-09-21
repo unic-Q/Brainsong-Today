@@ -54,7 +54,14 @@ def load(root):
         raise ValueError('替换候选优势系数必须大于1且不超过2')
     if cfg.get('shortlist_items', 10) != 10:
         raise ValueError('当前两轮方案入围池必须为10条')
+    if cfg.get('policy_scope') != 'china':
+        raise ValueError('政策范围必须限定为中国国内')
     scoring = cfg.get('scoring', {})
+    category_weights = scoring.get('category_weights', {})
+    if set(category_weights) != {'行业', '资本', '政策', '学术'} or any(
+            type(value) not in (int, float) or not 1 <= value <= 1.5
+            for value in category_weights.values()):
+        raise ValueError('分类业务权重必须完整，且为1到1.5')
     weights = scoring.get('source_weights', {'authority': .7, 'recognition': .3})
     if set(weights) != {'authority', 'recognition'} or any(not isinstance(v, (int, float)) or not 0 <= v <= 1 for v in weights.values()) or abs(sum(weights.values())-1) > .000001:
         raise ValueError('来源权重必须非负且合计1')

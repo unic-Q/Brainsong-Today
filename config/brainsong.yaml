@@ -3,8 +3,8 @@ profile: >-
   主要应用于教育、睡眠和情绪。最高优先级是脑机接口和脑电大模型；高优先级包括耳周EEG、脑电耳机、
   教育与耳机结合、脑电数据采集/存储/数据集。也关注干电极、芯片和渠道等可复用供应链，以及新兴企业。
   权重表达我们研发和商业决策的重要程度，不是大众热度。单纯教育新闻不能入选；耳机与教育应用相关才有价值。
-  关注国家及行业政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管。
-  脑机接口专项产业扶持、落地补贴和产业基金也相关，不因地方政策而排除；不关注与脑机行业无关的普通注册补贴。
+  政策只关注中国国内的全国政策和省市地方政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管；境外政策不入选。
+  中国国内脑机接口专项产业扶持、落地补贴和产业基金也相关，不因地方政策而排除；不关注与脑机行业无关的普通注册补贴。
   医疗不是我们的主营用途，但共用脑电技术和适用监管可关注。探索内容必须有合理业务邻近性，不能用无关内容凑数。
 relevance_examples:
   - {text: '非侵入式脑电耳机企业面向睡眠和专注力获得5000万元A轮融资', score: 80}
@@ -41,11 +41,14 @@ max_events: 3
 max_analysis_candidates: 36
 max_metadata_reads: 12
 max_extra_batches: 1
+policy_scope: china
 max_replacement_candidates_per_category: 1
 replacement_margin: 1.25
 site_search_limit: 3
 scoring:
   # Editable editorial presets, not objective measurements of reputation.
+  # Applied once inside each independent stage, never compounded to 1.44x.
+  category_weights: {行业: 1.2, 资本: 1.2, 政策: 1.2, 学术: 1.0}
   source_weights: {authority: 0.7, recognition: 0.3}
   source_reputation:
     original: [85, 60]
