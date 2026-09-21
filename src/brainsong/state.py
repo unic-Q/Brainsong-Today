@@ -139,6 +139,46 @@ class State:
                             (marker,json.dumps({'day':str(today)},ensure_ascii=False)))
         return True
 
+    def rollback_delivery_to(self, prior_path, backup_path, marker):
+        """Remove only delivery state added after a trusted earlier snapshot."""
+        marker_key = 'delivery-rollback:' + str(marker)
+        if self.get(marker_key):
+            return {'delivered': 0, 'policy': 0, 'reports': 0}
+        if self.db.execute("SELECT 1 FROM delivered WHERE status='pending' UNION ALL SELECT 1 FROM policy_delivered WHERE status='pending'").fetchone():
+            raise RuntimeError('存在未确认发送，不能回滚')
+        prior_path, backup = Path(prior_path), Path(backup_path)
+        if not prior_path.is_file() or backup.exists():
+            raise RuntimeError('回滚基线或备份路径无效')
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(backup) as target:
+            self.db.backup(target)
+        with sqlite3.connect(prior_path) as prior:
+            if prior.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+                raise RuntimeError('回滚基线数据库损坏')
+            prior_delivery = {row[0] for row in prior.execute('SELECT alias FROM delivered')}
+            prior_policy = {row[0] for row in prior.execute('SELECT alias FROM policy_delivered')}
+            prior_reports = {row[0]: row[1] for row in prior.execute("SELECT key,value FROM kv WHERE key LIKE 'report:%'")}
+            count_row = prior.execute("SELECT value FROM kv WHERE key='counts'").fetchone()
+        current_delivery = {row[0] for row in self.db.execute('SELECT alias FROM delivered')}
+        current_policy = {row[0] for row in self.db.execute('SELECT alias FROM policy_delivered')}
+        current_reports = {row[0] for row in self.db.execute("SELECT key FROM kv WHERE key LIKE 'report:%'")}
+        added_delivery = current_delivery - prior_delivery
+        added_policy = current_policy - prior_policy
+        added_reports = current_reports - set(prior_reports)
+        with self.db:
+            self.db.executemany('DELETE FROM delivered WHERE alias=?', [(x,) for x in added_delivery])
+            self.db.executemany('DELETE FROM policy_delivered WHERE alias=?', [(x,) for x in added_policy])
+            self.db.executemany('DELETE FROM kv WHERE key=?', [(x,) for x in added_reports])
+            if count_row:
+                self.db.execute("INSERT OR REPLACE INTO kv VALUES ('counts',?)", count_row)
+            else:
+                self.db.execute("DELETE FROM kv WHERE key='counts'")
+            self.db.execute('INSERT INTO kv VALUES (?,?)',
+                            (marker_key, json.dumps({'delivered': len(added_delivery),
+                                                     'policy': len(added_policy),
+                                                     'reports': len(added_reports)}, ensure_ascii=False)))
+        return {'delivered': len(added_delivery), 'policy': len(added_policy), 'reports': len(added_reports)}
+
     def error(self, today, stage, exc):
         # Never store HTTP bodies, headers, raw exception messages, keys or webhook URLs.
         detail = type(exc).__name__ if isinstance(exc, Exception) else str(exc)[:100]

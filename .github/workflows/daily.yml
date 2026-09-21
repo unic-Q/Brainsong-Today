@@ -20,6 +20,10 @@ on:
         description: "仅正式群首发时勾选：备份并一次性重置旧发送历史，须同时启用发送"
         type: boolean
         default: false
+      rollback_test_run_id:
+        description: "精确撤销某次测试推送的运行ID；不采集、不发送"
+        type: string
+        default: ""
 permissions:
   contents: read
   actions: read
@@ -50,12 +54,19 @@ jobs:
           INITIALIZE_STATE: ${{ inputs.initialize_state }}
         run: uv run python tools/restore_state.py
       - name: One-time formal launch reset
-        if: github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once
+        if: github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once && inputs.rollback_test_run_id == ''
         env:
           SEND_BRIEF: ${{ inputs.send }}
         run: uv run python tools/reset_delivery_once.py --confirm-official-launch
+      - name: Roll back one test delivery
+        if: github.event_name == 'workflow_dispatch' && inputs.rollback_test_run_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: uv run python tools/rollback_test_delivery.py "${{ inputs.rollback_test_run_id }}"
       - name: Collect, select and deliver
-        if: steps.restore.outcome == 'success'
+        if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == ''
         env:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}

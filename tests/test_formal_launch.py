@@ -83,6 +83,31 @@ def test_reset_does_not_clear_deleted_fingerprints_or_pending_delivery(tmp_path)
     state.close()
 
 
+def test_precise_test_delivery_rollback_keeps_prior_history_and_candidates(tmp_path):
+    prior_path = tmp_path/'prior.db'
+    prior = State(prior_path)
+    old, test = item(1, '行业'), item(2, '政策')
+    prior.retain_candidates([old, test], DAY)
+    prior.mark([old], DAY, 'sent')
+    prior.put('counts', {'total': 1, 'exploration': 0})
+    prior.put('report:old', 'sent')
+    prior.close()
+    current = State(tmp_path/'current.db')
+    current.retain_candidates([old, test], DAY)
+    current.mark([old], DAY, 'sent')
+    current.mark([test], DAY, 'sent')
+    current.put('counts', {'total': 2, 'exploration': 0})
+    current.put('report:old', 'sent')
+    current.put('report:test', 'sent')
+    result = current.rollback_delivery_to(prior_path, tmp_path/'backup.db', 'run-1')
+    assert result['policy'] > 0 and result['reports'] == 1
+    assert current.sent(old) and not current.sent(test)
+    assert len(current.candidates()) == 2
+    assert current.get('counts')['total'] == 1
+    assert current.rollback_delivery_to(prior_path, tmp_path/'unused.db', 'run-1')['delivered'] == 0
+    current.close()
+
+
 def test_schedule_is_gated_and_reset_never_scheduled():
     workflow=(ROOT/'.github/workflows/daily.yml').read_text(encoding='utf-8')
     assert '47 0 * * *' in workflow
