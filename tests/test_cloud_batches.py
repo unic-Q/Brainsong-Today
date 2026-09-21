@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -82,11 +83,29 @@ def test_full_academic_direction_yields_to_industry_and_capital():
     assert batch == [industry, capital] or batch == [capital, industry]
 
 
-def test_quality_precedes_forced_direction_round_robin():
+def test_analysis_slots_are_balanced_before_deepening_one_direction():
     papers = [make_item(i, '学术') for i in range(20)]
-    other = [make_item(30), make_item(31), make_item(32)]
+    other = [make_item(i) for i in range(30,39)]
     batch = pipeline.direction_batch(papers+other, [], {}, lambda a: 100 if a.category == '学术' else 70, 6)
-    assert all(a.category == '学术' for a in batch)
+    counts = {category:sum(a.category == category for a in batch)
+              for category in {'学术','行业','资本','政策'}}
+    assert all(counts[category] >= 1 for category in counts)
+    assert counts['学术'] <= 2
+
+
+def test_full_direction_gets_only_one_clear_replacement_check():
+    picks = [make_item(i, '学术') for i in range(3)]
+    papers = [make_item(i+10, '学术') for i in range(5)]
+    replacements = Counter()
+    first = pipeline.direction_batch(papers, picks,
+        {'max_category_items':3,'max_academic_items':3,
+         'max_replacement_candidates_per_category':1,'replacement_margin':1.25},
+        lambda a:100 if a in picks else 200,3,replacement_counts=replacements)
+    second = pipeline.direction_batch(papers, picks,
+        {'max_category_items':3,'max_academic_items':3,
+         'max_replacement_candidates_per_category':1,'replacement_margin':1.25},
+        lambda a:100 if a in picks else 200,3,replacement_counts=replacements)
+    assert len(first)==1 and second==[]
 
 
 def test_skipped_metadata_does_not_spend_ai_budget(tmp_path, monkeypatch):

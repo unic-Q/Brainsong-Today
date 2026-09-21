@@ -328,6 +328,21 @@ def display_summary(text, title=""):
     return usable_summary(text, title) and len(text) <= 100 and len(re.findall(r"[\u4e00-\u9fff]", text)) >= 6 and not text.endswith(("…", "..."))
 
 
+def fit_summary(text, limit=100):
+    """Deterministic final guard after the model has already tried compression."""
+    text = re.sub(r"\s+", " ", text or "").strip()
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    sentence = max((head.rfind(mark) for mark in "。！？!?"), default=-1)
+    if sentence >= 40:
+        return head[:sentence + 1].strip()
+    clause = max((head.rfind(mark) for mark in "，,；;：:"), default=-1)
+    if clause >= 50:
+        return head[:clause].rstrip("，,；;：:、 ") + "。"
+    return head[:limit - 1].rstrip("，,；;：:、。！？!? ") + "。"
+
+
 def summarize(item, provider, state, today):
     version = '100-v5-subject-first'
     item.capture_source()
@@ -368,8 +383,10 @@ def summarize(item, provider, state, today):
                                   '以subject事件主体开头，不猜测姓名。只返回 {"summary":"..."}。',
                                   {'title': item.title, 'evidence': evidence, 'draft': summary[:1000], 'subject': item.subject})
             summary = value.get('summary')
-            if isinstance(summary, str):
-                summary = subject_first(summary.strip())
+        if isinstance(summary, str):
+            summary = subject_first(summary.strip())
+        if isinstance(summary, str) and len(summary) > 100:
+            summary = fit_summary(summary)
         if not isinstance(summary, str) or not display_summary(summary.strip(), item.title):
             raise QualityError("summary_invalid_or_over_100")
         item.summary = summary.strip()

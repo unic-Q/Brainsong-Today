@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from brainsong.collect import from_search
-from brainsong.editor import apply_assessment, merge, prepare, render, select, summarize
+from brainsong.editor import apply_assessment, display_summary, merge, prepare, render, select, summarize
 from brainsong.events import month_before, verify_events
 from brainsong.model import Article, canonical
 from brainsong.pipeline import load, run
@@ -109,6 +109,24 @@ def test_long_text_summary_only(tmp_path):
     a = article(body="耳机教育研究。" * 100, matches=[RULE])
     summarize(a, AI(), state, DAY)
     assert a.summary_kind == "ai" and len(a.summary) <= 50
+    state.close()
+
+
+def test_overlong_retry_is_locally_trimmed_instead_of_dropped(tmp_path):
+    class AI:
+        calls = 0
+        def chat(self, task, payload, **kwargs):
+            self.calls += 1
+            return {"summary": "脑颂科技发布消费级脑电耳机，支持教育场景中的注意力数据采集、课堂反馈和学习状态分析，"
+                               "同时开放开发接口供合作伙伴连接应用平台，并公布首批学校试点数据与后续产品规划。"
+                               "团队还披露了设备续航、数据接口、部署方式及更多后续试点安排。"}
+    state = State(tmp_path / "s.db")
+    ai = AI()
+    a = article(body="脑颂科技发布消费级脑电耳机。" * 100, matches=[RULE])
+    summarize(a, ai, state, DAY)
+    assert ai.calls == 2
+    assert a.summary_kind == "ai" and display_summary(a.summary, a.title)
+    assert len(a.summary) <= 100
     state.close()
 
 

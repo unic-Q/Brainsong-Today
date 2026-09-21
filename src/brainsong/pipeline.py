@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -45,6 +46,12 @@ def load(root):
         value = cfg.get(key, maximum)
         if type(value) is not int or not 1 <= value <= maximum:
             raise ValueError('配额配置超出范围: ' + key)
+    replacements = cfg.get('max_replacement_candidates_per_category', 1)
+    if type(replacements) is not int or not 0 <= replacements <= 2:
+        raise ValueError('每类替换分析名额必须为0至2')
+    margin = cfg.get('replacement_margin', 1.25)
+    if not isinstance(margin, (int, float)) or not 1 < margin <= 2:
+        raise ValueError('替换候选优势系数必须大于1且不超过2')
     if cfg.get('shortlist_items', 10) != 10:
         raise ValueError('当前两轮方案入围池必须为10条')
     scoring = cfg.get('scoring', {})
@@ -104,8 +111,11 @@ def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
     return False
 
 
-def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploration_due=False):
+def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploration_due=False,
+                    analysis_counts=None, replacement_counts=None):
     """Recent business-relevant evidence first; convenience cannot outrank value."""
+    analysis_counts = analysis_counts if analysis_counts is not None else Counter()
+    replacement_counts = replacement_counts if replacement_counts is not None else Counter()
     def needs_read(a):
         return not a.published or (not usable_summary(a.summary, a.title) and not a.body)
     def full(a):
@@ -119,22 +129,36 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
             current = [p for p in picks if p.category == a.category]
             # Only clearly stronger, dated candidates can spend work replacing
             # a full direction; unknown dates cannot claim to be fresher.
-            if not current or not a.published or estimate(a) <= min(estimate(p) for p in current) * 1.1:
+            if (replacement_counts[a.category] >= cfg.get('max_replacement_candidates_per_category', 1)
+                    or not current or not a.published
+                    or estimate(a) <= min(estimate(p) for p in current) * cfg.get('replacement_margin', 1.25)):
                 continue
         candidates.append(a)
     result = []
     while candidates and len(result) < size:
+        available = [a for a in candidates if not full(a) or
+                     replacement_counts[a.category] + sum(full(x) and x.category == a.category for x in result)
+                     < cfg.get('max_replacement_candidates_per_category', 1)]
+        if not available:
+            break
         def priority(a):
             evidence_level = 2 if not a.published else 1 if needs_read(a) else 0
             representation = sum(p.category == a.category for p in picks + result)
             recent = date_priority(a) if cfg.get('acquisition', {}).get('recency_first') else 0
-            return (full(a), not (a.exploration and exploration_due),
+            # Spend scarce AI slots across directions before deepening one rich
+            # source pool. A full direction can only use its explicit replacement slot.
+            return (full(a), analysis_counts[a.category] + sum(x.category == a.category for x in result),
+                    not (a.exploration and exploration_due),
                     estimated_relevance(a, cfg) < 60,
                     -recent,
                     -estimate(a), -source_priority(a, cfg), representation, evidence_level, a.identity)
-        chosen = min(candidates, key=priority)
+        chosen = min(available, key=priority)
         candidates.remove(chosen)
         result.append(chosen)
+    for item in result:
+        analysis_counts[item.category] += 1
+        if full(item):
+            replacement_counts[item.category] += 1
     return result
 
 
@@ -172,6 +196,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     accepted, picks, rejected = [], [], set()
     batch_size = min(6, max(1, cfg['ai']['batch_size']))
     cursor = analysed = extra_batches = metadata_reads = 0
+    analysis_counts, replacement_counts = Counter(), Counter()
     remaining = list(queue)
     budget = cfg.get('max_analysis_candidates', 36)
     while remaining and analysed < budget:
@@ -187,11 +212,10 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             available = promising
         else:
             available = remaining
-        schedule_cfg = cfg if have_ten else dict(cfg, max_category_items=cfg.get('max_category_items', 3)+1,
-                                               max_academic_items=cfg.get('max_academic_items', 3)+1)
-        raw = direction_batch(available, picks, schedule_cfg, estimate, min(batch_size, budget-analysed),
+        raw = direction_batch(available, picks, cfg, estimate, min(batch_size, budget-analysed),
                               can_read=offline or metadata_reads < cfg.get('max_metadata_reads', 12),
-                              exploration_due=allowance > 0 and not any(a.exploration for a in picks))
+                              exploration_due=allowance > 0 and not any(a.exploration for a in picks),
+                              analysis_counts=analysis_counts, replacement_counts=replacement_counts)
         if not raw:
             progress('no eligible refill within evidence and quota limits', ready=len(picks))
             break
@@ -254,7 +278,8 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                      remaining_ready=sum(a.category == category and bool(a.published) and
                                          (usable_summary(a.summary, a.title) or bool(a.body)) for a in remaining))
     picks = fill_link_only(picks, [a for a in accepted if a.identity in rejected], state, today, cfg)
-    progress('selection complete', inspected=cursor, analysed=analysed, deferred=len(remaining), ready=len(picks))
+    progress('selection complete', inspected=cursor, analysed=analysed, deferred=len(remaining), ready=len(picks),
+             analysed_mix=','.join(f'{k}:{analysis_counts[k]}' for k in ('行业','资本','政策','学术')))
     return pool, picks
 
 

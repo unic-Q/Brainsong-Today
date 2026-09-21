@@ -41,6 +41,8 @@ max_events: 3
 max_analysis_candidates: 36
 max_metadata_reads: 12
 max_extra_batches: 1
+max_replacement_candidates_per_category: 1
+replacement_margin: 1.25
 site_search_limit: 3
 scoring:
   # Editable editorial presets, not objective measurements of reputation.
