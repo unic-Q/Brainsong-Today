@@ -29,14 +29,14 @@ concurrency:
 jobs:
   daily:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name != 'schedule' || vars.BRAINSONG_FORMAL_READY == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       - name: Install locked environment
         run: uv sync --frozen --extra dev
       - name: Offline regression tests
@@ -70,7 +70,7 @@ jobs:
           uv run brainsong-today "${args[@]}"
       - name: Preserve history even after delivery failure
         if: always() && steps.restore.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: brainsong-state
           path: state/*.sqlite3
@@ -78,7 +78,7 @@ jobs:
           if-no-files-found: error
       - name: Preserve reports and failure logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: brainsong-reports-logs
           path: |
