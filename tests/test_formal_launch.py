@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 from brainsong.model import Article
 from brainsong.editor import select,fill_link_only,render
-from brainsong.pipeline import load
+from brainsong.pipeline import aggregate_page, fresh_collection, load
 from brainsong.state import State
 
 DAY=date(2026,9,20)
@@ -122,6 +122,7 @@ def test_three_day_profile_is_active_and_reversible():
     assert cfg['search_recency'] == 'oneWeek'
     assert set(cfg['operation_profiles']['presets']) == {'three_day', 'daily_30d'}
     assert set(cfg['windows'].values()) == {3}
+    assert cfg['strict_event_freshness'] and cfg['reject_aggregate_pages']
 
 
 def test_three_day_delivery_guard(tmp_path):
@@ -131,3 +132,22 @@ def test_three_day_delivery_guard(tmp_path):
     assert not state.delivery_due(DAY+timedelta(days=2),3)
     assert state.delivery_due(DAY+timedelta(days=3),3)
     state.close()
+
+
+def test_strict_window_uses_first_report_and_filters_before_storage():
+    cfg=load(ROOT)[0]
+    recent=item(1,age=1)
+    reprint=item(2,age=1);reprint.first_reported=str(DAY-timedelta(days=3))
+    old=item(3,age=4)
+    undated=item(4);undated.published=''
+    assert recent.in_window(DAY,cfg['windows'],True)
+    assert not reprint.in_window(DAY,cfg['windows'],True)
+    assert fresh_collection([recent,reprint,old,undated],cfg,DAY)==[recent,undated]
+
+
+def test_strict_profile_rejects_aggregate_pages_but_recovery_preset_does_not():
+    digest=item(1);digest.title='Weekly Neurotech & BCI Digest'
+    assert aggregate_page(digest)
+    cfg=load(ROOT)[0]
+    assert cfg['reject_aggregate_pages']
+    assert not cfg['operation_profiles']['presets']['daily_30d']['reject_aggregate_pages']

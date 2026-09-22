@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -31,7 +32,9 @@ def load(root):
             or not 1 <= preset['lookback_days'] <= 30
             or type(preset.get('delivery_interval_days')) is not int
             or not 1 <= preset['delivery_interval_days'] <= 30
-            or preset.get('search_recency') not in {'oneDay', 'oneWeek', 'oneMonth'}):
+            or preset.get('search_recency') not in {'oneDay', 'oneWeek', 'oneMonth'}
+            or type(preset.get('strict_event_freshness')) is not bool
+            or type(preset.get('reject_aggregate_pages')) is not bool):
         raise ValueError('运行预设格式错误')
     cfg.update(preset)
     cfg['windows'] = dict.fromkeys(('行业', '资本', '学术', '政策'), preset['lookback_days'])
@@ -99,6 +102,22 @@ def queries(rules, cfg, today):
         r = explore[today.toordinal() % len(explore)]
         result.append(("探索", r.get("query", r["id"])))
     return result
+
+
+def active_window(item, cfg, today):
+    return item.in_window(today, cfg['windows'], cfg.get('strict_event_freshness', False))
+
+
+def fresh_collection(items, cfg, today):
+    """Discard explicitly old rows before persistence; undated rows still need metadata."""
+    return [item for item in items if not item.published or active_window(item, cfg, today)]
+
+
+def aggregate_page(item):
+    text = item.title + ' ' + item.source
+    return bool(re.search(
+        r'weekly|week in review|roundup|digest|newsletter|周报|周刊|一周(?:要闻|回顾)|合集|资讯汇总',
+        text, re.I))
 
 
 def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
@@ -185,10 +204,11 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     pool = merge([a for a in items if not state.deleted(a)])
     queue = []
     for item in pool:
-        if not prepare(item, rules, exclusions) or state.sent(item) or not business_context(item, cfg):
+        if (not prepare(item, rules, exclusions) or state.sent(item) or not business_context(item, cfg)
+                or (cfg.get('reject_aggregate_pages', False) and aggregate_page(item))):
             continue
         # Dates already known to be outside the window need no page request.
-        if item.published and not item.in_window(today, cfg['windows']):
+        if item.published and not active_window(item, cfg, today):
             continue
         queue.append(item)
     scoring = cfg.get('scoring', {})
@@ -209,7 +229,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     progress('candidate queue', retained=len(pool), eligible=len(queue))
     ai = cfg['ai']['enabled'] and not offline and not no_ai
     history = [a for a in state.recent(today, cfg['lookback_days']) if a.accepted and
-               a.in_window(today, cfg['windows']) and state.sent(a)] if ai else []
+               active_window(a, cfg, today) and state.sent(a)] if ai else []
     accepted, picks, rejected = [], [], set()
     batch_size = min(6, max(1, cfg['ai']['batch_size']))
     cursor = analysed = extra_batches = metadata_reads = 0
@@ -258,7 +278,9 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             if not item.published:
                 state.error(today, '文章日期:' + item.url, 'missing_date')
                 continue
-            if prepare(item, rules, exclusions) and business_context(item, cfg) and item.in_window(today, cfg['windows']):
+            if (prepare(item, rules, exclusions) and business_context(item, cfg)
+                    and not (cfg.get('reject_aggregate_pages', False) and aggregate_page(item))
+                    and active_window(item, cfg, today)):
                 batch.append(item)
         analysed += len(batch)
         accepted.extend(relevance_filter(batch, provider, cfg, rules, state, today) if ai
@@ -327,7 +349,9 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
             items = []
             for category, query, domain in ([] if cached_only else cfg.get('supplement_queries', [])):
                 try:
-                    collected = from_search(provider.search(query, domain, recency=cfg['search_recency']), category, domain)
+                    collected = fresh_collection(
+                        from_search(provider.search(query, domain, recency=cfg['search_recency']), category, domain),
+                        cfg, today)
                     state.retain_candidates(collected, today)
                     items.extend(collected)
                     source_stats.append({'id': 'supplement:' + category, 'returned': len(collected),
@@ -351,13 +375,16 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         site_searches += 1
                         rows = provider.search(source.get("query", "脑机接口 脑电 耳机 教育"), urlsplit(source["url"]).hostname,
                                                recency=cfg['search_recency'])
-                        collected = from_search(rows, source.get("category", "行业"), urlsplit(source["url"]).hostname)
+                        collected = fresh_collection(
+                            from_search(rows, source.get("category", "行业"), urlsplit(source["url"]).hostname),
+                            cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                     else:
                         collected = collect_source(source, reader, today, rules,
                                                    filter_relevance=False,
                                                    lookback_days=cfg['lookback_days'])
+                        collected = fresh_collection(collected, cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                         source_stats.append({"id": source["id"], "returned": len(collected),
@@ -367,7 +394,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                 progress('source complete ' + source['id'], candidates=len(items))
             if cfg.get("wechat_enabled", False):
                 try:
-                    collected = collect_wechat(root, reader, today)
+                    collected = fresh_collection(collect_wechat(root, reader, today), cfg, today)
                     state.retain_candidates(collected, today)
                     items.extend(collected)
                     source_stats.append({"id": "wechat", "returned": len(collected),
@@ -382,6 +409,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         collected = bing_news(query, reader, today,
                                               {"政策": "政策", "资本": "资本"}.get(topic, "行业"),
                                               lookback_days=cfg['lookback_days'])
+                        collected = fresh_collection(collected, cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                         source_stats.append({"id": "bing:" + topic, "returned": len(collected),
@@ -392,8 +420,10 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                 for topic, query in queries(rules, cfg, today):
                     try:
                         domain = "arxiv.org" if topic == "学术" else ""
-                        collected = from_search(provider.search(query, domain, recency=cfg['search_recency']),
-                                                {"政策": "政策", "学术": "学术", "资本": "资本"}.get(topic, "行业"), domain)
+                        collected = fresh_collection(
+                            from_search(provider.search(query, domain, recency=cfg['search_recency']),
+                                        {"政策": "政策", "学术": "学术", "资本": "资本"}.get(topic, "行业"), domain),
+                            cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                     except Exception as exc:

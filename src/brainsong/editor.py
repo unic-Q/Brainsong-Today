@@ -234,7 +234,8 @@ def merge_event_reports(items, provider, state, today):
 
 
 def select(items, state, today, cfg):
-    eligible = [a for a in items if a.accepted and a.in_window(today, cfg["windows"]) and not state.sent(a)]
+    eligible = [a for a in items if a.accepted and a.in_window(
+        today, cfg["windows"], cfg.get('strict_event_freshness', False)) and not state.sent(a)]
     scoring = cfg.get('scoring', {})
     eligible = [a for a in eligible if shortlist_score(a, today, scoring) > 0 and ranking_score(a, today, scoring) > 0]
     eligible.sort(key=lambda a: ((a.first_reported or a.published)[:10] if cfg.get('acquisition', {}).get('recency_first') else '',
@@ -300,7 +301,8 @@ def fill_link_only(picks, failed, state, today, cfg):
             break
         if (item.identity in seen or not item.accepted or item.relevance is None or effective_relevance(item, scoring) < 60
                 or item.summary_kind != 'failed' or not canonical(item.url) or not item.title.strip()
-                or state.sent(item) or state.deleted(item) or not item.in_window(today,cfg['windows'])
+                or state.sent(item) or state.deleted(item) or not item.in_window(
+                    today, cfg['windows'], cfg.get('strict_event_freshness', False))
                 or ranking_score(item,today,scoring) <= 0 or shortlist_score(item,today,scoring) <= 0):
             continue
         limit = cfg.get('max_category_items',3)

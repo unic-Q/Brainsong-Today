@@ -36,8 +36,8 @@ acquisition:
 operation_profiles:
   active: three_day
   presets:
-    three_day: {lookback_days: 3, delivery_interval_days: 3, search_recency: oneWeek}
-    daily_30d: {lookback_days: 30, delivery_interval_days: 1, search_recency: oneMonth}
+    three_day: {lookback_days: 3, delivery_interval_days: 3, search_recency: oneWeek, strict_event_freshness: true, reject_aggregate_pages: true}
+    daily_30d: {lookback_days: 30, delivery_interval_days: 1, search_recency: oneMonth, strict_event_freshness: false, reject_aggregate_pages: false}
 max_items: 7
 shortlist_items: 10
 max_academic_items: 3

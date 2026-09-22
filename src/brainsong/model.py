@@ -189,9 +189,10 @@ class Article:
                 aliases.append(digest('standard:' + re.sub(r'\s|/', '', prefix.upper()) + number + ':' + year))
         return aliases
 
-    def in_window(self, today: date, windows: dict) -> bool:
+    def in_window(self, today: date, windows: dict, use_first_reported=False) -> bool:
         try:
-            age = (today - date.fromisoformat(self.published[:10])).days
+            value = self.first_reported if use_first_reported and self.first_reported else self.published
+            age = (today - date.fromisoformat(value[:10])).days
             return 0 <= age < windows[self.category]
         except (ValueError, KeyError):
             return False
