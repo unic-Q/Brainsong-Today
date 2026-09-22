@@ -58,7 +58,11 @@ def test_partial_brief_can_send(tmp_path, monkeypatch):
             return SimpleNamespace(success=True)
     monkeypatch.setattr(pipeline, 'FeishuPusher', Pusher)
     monkeypatch.setenv('FEISHU_WEBHOOK', 'https://open.feishu.cn/open-apis/bot/v2/hook/test-only')
+    monkeypatch.setenv('DAILY_DELIVERY', 'true')
     result = pipeline.run(tmp_path, DAY)
     assert not result['sent']
     result = pipeline.run(tmp_path, DAY, send=True)
     assert result['sent'] and result['items'] == 1 and len(calls) == 1
+    state = State(tmp_path/'state/brainsong.sqlite3')
+    assert state.get('daily-delivery:' + str(DAY)) == 'sent'
+    state.close()

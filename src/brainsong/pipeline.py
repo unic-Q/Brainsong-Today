@@ -426,6 +426,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                 if result.success:
                     state.mark(picks, today, "sent")
                     state.put(delivery_key, "sent")
+                    if os.getenv('DAILY_DELIVERY') == 'true':
+                        state.put('daily-delivery:' + today.isoformat(), 'sent')
                     count = state.get("counts", {"total": 0, "exploration": 0})
                     state.put("counts", {"total": count["total"] + len(picks),
                                          "exploration": count["exploration"] + sum(a.exploration for a in picks)})

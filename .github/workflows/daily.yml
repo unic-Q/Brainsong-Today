@@ -1,7 +1,11 @@
 name: Brainsong Today
 on:
   schedule:
-    - cron: "47 0 * * *"
+    # Beijing 08:25–12:05. Each slot is an independent retry; the daily
+    # success marker makes every later slot exit before collection/API use.
+    - cron: "25-55/10 0 * * *"
+    - cron: "5-55/10 1-3 * * *"
+    - cron: "5 4 * * *"
   workflow_dispatch:
     inputs:
       initialize_state:
@@ -24,6 +28,10 @@ on:
         description: "精确撤销某次测试推送的运行ID；不采集、不发送"
         type: string
         default: ""
+      daily_delivery:
+        description: "将本次成功发送记为当天正式简报，阻止后续补偿重复发送"
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -65,13 +73,20 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: uv run python tools/rollback_test_delivery.py "${{ inputs.rollback_test_run_id }}"
-      - name: Collect, select and deliver
+      - name: Check daily delivery lock
+        id: daily_guard
         if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == ''
+        env:
+          DAILY_DELIVERY: ${{ github.event_name == 'schedule' || inputs.daily_delivery }}
+        run: uv run python tools/daily_delivery_guard.py
+      - name: Collect, select and deliver
+        if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == '' && steps.daily_guard.outputs.should_run == 'true'
         env:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           SEND_BRIEF: ${{ github.event_name == 'schedule' || inputs.send }}
           CACHED_ONLY: ${{ inputs.cached_only }}
+          DAILY_DELIVERY: ${{ github.event_name == 'schedule' || inputs.daily_delivery }}
           PYTHONUNBUFFERED: "1"
         shell: bash
         run: |
