@@ -133,6 +133,8 @@ def test_skipped_metadata_does_not_spend_ai_budget(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, 'finish_item', lambda *args,**kwargs: True)
     pipeline.process_candidates(rows,cfg,policy['rules'],policy['exclude'],state,object(),Reader(),DAY,lambda *args,**kwargs: None)
     assert len(reads) == 9 and len(assessed) == 3
+    assert len(state.candidates()) == 3
+    assert all(a.published == str(DAY) for a in state.candidates())
     state.close()
 
 

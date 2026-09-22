@@ -273,7 +273,9 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                     metadata(item, reader.get(item.url))
                 except Exception as exc:
                     state.error(today, '文章读取:' + item.url, exc)
-            if not offline:
+            # In strict mode, a page whose newly discovered date is already
+            # outside the window must not refresh the candidate store.
+            if not offline and (not item.published or active_window(item, cfg, today)):
                 state.retain_candidates([item], today)
             if not item.published:
                 state.error(today, '文章日期:' + item.url, 'missing_date')
