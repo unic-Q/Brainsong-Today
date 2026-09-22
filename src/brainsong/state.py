@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from .model import Article
@@ -110,6 +110,16 @@ class State:
     def sent(self, item):
         return any(self.db.execute("SELECT 1 FROM delivered WHERE alias=? AND status IN ('sent','pending') UNION ALL SELECT 1 FROM policy_delivered WHERE alias=? AND status IN ('sent','pending')", (k, k)).fetchone()
                    for k in item.aliases())
+
+    def delivery_due(self, today, interval):
+        days = []
+        for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'daily-delivery:%'"):
+            if json.loads(value) == 'sent':
+                try:
+                    days.append(date.fromisoformat(key.removeprefix('daily-delivery:')))
+                except ValueError:
+                    pass
+        return not days or (today - max(days)).days >= interval
 
     def mark(self, items, today, status):
         self.db.executemany("INSERT OR REPLACE INTO delivered VALUES (?,?,?)",

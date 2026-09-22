@@ -1,24 +1,12 @@
 """Skip later retry slots after one confirmed Beijing-date delivery."""
 import os
-import json
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml
 
 from brainsong.state import State
-
-
-def delivery_due(state, today, interval):
-    days = []
-    for key, value in state.db.execute("SELECT key,value FROM kv WHERE key LIKE 'daily-delivery:%'"):
-        if json.loads(value) == 'sent':
-            try:
-                days.append(date.fromisoformat(key.removeprefix('daily-delivery:')))
-            except ValueError:
-                pass
-    return not days or (today - max(days)).days >= interval
 
 
 def main():
@@ -30,7 +18,7 @@ def main():
         interval = profiles['presets'][profiles['active']]['delivery_interval_days']
         state = State(Path('state') / 'brainsong.sqlite3')
         try:
-            should_run = delivery_due(state, today, interval)
+            should_run = state.delivery_due(today, interval)
         finally:
             state.close()
     output = os.getenv('GITHUB_OUTPUT')

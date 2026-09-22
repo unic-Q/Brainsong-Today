@@ -125,10 +125,9 @@ def test_three_day_profile_is_active_and_reversible():
 
 
 def test_three_day_delivery_guard(tmp_path):
-    from tools.daily_delivery_guard import delivery_due
     state=State(tmp_path/'guard.db')
-    assert delivery_due(state,DAY,3)
+    assert state.delivery_due(DAY,3)
     state.put('daily-delivery:'+str(DAY),'sent')
-    assert not delivery_due(state,DAY+timedelta(days=2),3)
-    assert delivery_due(state,DAY+timedelta(days=3),3)
+    assert not state.delivery_due(DAY+timedelta(days=2),3)
+    assert state.delivery_due(DAY+timedelta(days=3),3)
     state.close()
