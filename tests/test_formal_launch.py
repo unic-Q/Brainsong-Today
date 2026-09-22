@@ -28,13 +28,13 @@ def test_old_high_score_cannot_evict_recent_within_category(tmp_path):
     state.close()
 
 
-def test_same_tier_uses_score_and_old_news_fills_only_vacancies(tmp_path):
+def test_same_tier_uses_score_and_old_news_never_fills_vacancies(tmp_path):
     cfg=load(ROOT)[0];state=State(tmp_path/'s.db')
     weak=item(1,age=1,score=60);strong=item(2,age=2,score=95)
     old=item(3,age=20,score=100)
     picks=select([weak,strong,old],state,DAY,cfg)
-    assert len(picks)==3
-    # Limit one category slot to expose same-tier choice, then old fill is forbidden.
+    assert picks==[strong,weak]
+    # Limit one category slot to expose same-tier choice; old fill stays forbidden.
     cfg['max_category_items']=1
     assert select([weak,strong,old],state,DAY,cfg)==[strong]
     state.close()
@@ -114,3 +114,21 @@ def test_schedule_is_gated_and_reset_never_scheduled():
     assert "vars.BRAINSONG_FORMAL_READY == 'true'" in workflow
     assert "github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once" in workflow
     assert "steps.daily_guard.outputs.should_run == 'true'" in workflow
+
+
+def test_three_day_profile_is_active_and_reversible():
+    cfg=load(ROOT)[0]
+    assert cfg['lookback_days'] == 3 and cfg['delivery_interval_days'] == 3
+    assert cfg['search_recency'] == 'oneWeek'
+    assert set(cfg['operation_profiles']['presets']) == {'three_day', 'daily_30d'}
+    assert set(cfg['windows'].values()) == {3}
+
+
+def test_three_day_delivery_guard(tmp_path):
+    from tools.daily_delivery_guard import delivery_due
+    state=State(tmp_path/'guard.db')
+    assert delivery_due(state,DAY,3)
+    state.put('daily-delivery:'+str(DAY),'sent')
+    assert not delivery_due(state,DAY+timedelta(days=2),3)
+    assert delivery_due(state,DAY+timedelta(days=3),3)
+    state.close()

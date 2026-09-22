@@ -32,6 +32,12 @@ acquisition:
     - {all: ['神经数据|脑电数据|neural data', '隐私|未成年人|privacy|minor'], score: 100}
     - {all: ['脑电|EEG', '大模型|基础模型|foundation model'], score: 90}
     - {all: ['耳机|headphone|headset', '课堂|教育|听觉训练|classroom|education'], score: 80}
+# Reversible operating presets. Change only `active` to restore the former mode.
+operation_profiles:
+  active: three_day
+  presets:
+    three_day: {lookback_days: 3, delivery_interval_days: 3, search_recency: oneWeek}
+    daily_30d: {lookback_days: 30, delivery_interval_days: 1, search_recency: oneMonth}
 max_items: 7
 shortlist_items: 10
 max_academic_items: 3

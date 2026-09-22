@@ -25,6 +25,16 @@ def load(root):
     rules = yaml.safe_load((root / "config/keywords.yaml").read_text(encoding="utf-8"))
     sources = yaml.safe_load((root / "config/sources.yaml").read_text(encoding="utf-8"))
     events = json.loads((root / "config/events.json").read_text(encoding="utf-8"))
+    profiles = cfg.get('operation_profiles', {})
+    preset = profiles.get('presets', {}).get(profiles.get('active'))
+    if (not isinstance(preset, dict) or type(preset.get('lookback_days')) is not int
+            or not 1 <= preset['lookback_days'] <= 30
+            or type(preset.get('delivery_interval_days')) is not int
+            or not 1 <= preset['delivery_interval_days'] <= 30
+            or preset.get('search_recency') not in {'oneDay', 'oneWeek', 'oneMonth'}):
+        raise ValueError('运行预设格式错误')
+    cfg.update(preset)
+    cfg['windows'] = dict.fromkeys(('行业', '资本', '学术', '政策'), preset['lookback_days'])
     for example in cfg.get('relevance_examples', []):
         if not isinstance(example.get('text'), str) or type(example.get('score')) is not int or not 0 <= example['score'] <= 100:
             raise ValueError('相关性评分示例格式错误')
@@ -198,7 +208,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             queue.insert(0, discovery)
     progress('candidate queue', retained=len(pool), eligible=len(queue))
     ai = cfg['ai']['enabled'] and not offline and not no_ai
-    history = [a for a in state.recent(today) if a.accepted and
+    history = [a for a in state.recent(today, cfg['lookback_days']) if a.accepted and
                a.in_window(today, cfg['windows']) and state.sent(a)] if ai else []
     accepted, picks, rejected = [], [], set()
     batch_size = min(6, max(1, cfg['ai']['batch_size']))
@@ -317,7 +327,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
             items = []
             for category, query, domain in ([] if cached_only else cfg.get('supplement_queries', [])):
                 try:
-                    collected = from_search(provider.search(query, domain, recency='oneMonth'), category, domain)
+                    collected = from_search(provider.search(query, domain, recency=cfg['search_recency']), category, domain)
                     state.retain_candidates(collected, today)
                     items.extend(collected)
                     source_stats.append({'id': 'supplement:' + category, 'returned': len(collected),
@@ -340,12 +350,14 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                             continue
                         site_searches += 1
                         rows = provider.search(source.get("query", "脑机接口 脑电 耳机 教育"), urlsplit(source["url"]).hostname,
-                                               recency='oneMonth')
+                                               recency=cfg['search_recency'])
                         collected = from_search(rows, source.get("category", "行业"), urlsplit(source["url"]).hostname)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                     else:
-                        collected = collect_source(source, reader, today, rules, filter_relevance=False)
+                        collected = collect_source(source, reader, today, rules,
+                                                   filter_relevance=False,
+                                                   lookback_days=cfg['lookback_days'])
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                         source_stats.append({"id": source["id"], "returned": len(collected),
@@ -368,7 +380,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         continue
                     try:
                         collected = bing_news(query, reader, today,
-                                              {"政策": "政策", "资本": "资本"}.get(topic, "行业"))
+                                              {"政策": "政策", "资本": "资本"}.get(topic, "行业"),
+                                              lookback_days=cfg['lookback_days'])
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                         source_stats.append({"id": "bing:" + topic, "returned": len(collected),
@@ -379,13 +392,13 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                 for topic, query in queries(rules, cfg, today):
                     try:
                         domain = "arxiv.org" if topic == "学术" else ""
-                        collected = from_search(provider.search(query, domain, recency='oneMonth'),
+                        collected = from_search(provider.search(query, domain, recency=cfg['search_recency']),
                                                 {"政策": "政策", "学术": "学术", "资本": "资本"}.get(topic, "行业"), domain)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                     except Exception as exc:
                         state.error(today, "搜索:" + topic, exc)
-        pool, picks = process_candidates(items + state.candidates() + state.recent(today),
+        pool, picks = process_candidates(items + state.candidates() + state.recent(today, cfg['lookback_days']),
                                          cfg, rules, exclusions, state, provider, reader, today,
                                          progress, offline=offline, no_ai=no_ai)
         picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), shortlist_score(a, today, cfg.get('scoring')), a.identity), reverse=True)

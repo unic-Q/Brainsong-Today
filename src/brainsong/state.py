@@ -102,9 +102,9 @@ class State:
         self.db.execute('UPDATE candidate_inputs SET released=? WHERE released IS NULL', (str(today),))
         self.db.commit()
 
-    def recent(self, today):
+    def recent(self, today, days=30):
         return [a for r in self.db.execute(
-            "SELECT payload FROM articles WHERE published>=? OR json_extract(payload,'$.category')='政策'", ((today-timedelta(days=30)).isoformat(),))
+            "SELECT payload FROM articles WHERE published>=? OR json_extract(payload,'$.category')='政策'", ((today-timedelta(days=days)).isoformat(),))
                 if not self.deleted(a := Article(**json.loads(r[0])))]
 
     def sent(self, item):

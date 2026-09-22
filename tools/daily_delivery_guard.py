@@ -1,19 +1,36 @@
 """Skip later retry slots after one confirmed Beijing-date delivery."""
 import os
-from datetime import datetime
+import json
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import yaml
+
 from brainsong.state import State
+
+
+def delivery_due(state, today, interval):
+    days = []
+    for key, value in state.db.execute("SELECT key,value FROM kv WHERE key LIKE 'daily-delivery:%'"):
+        if json.loads(value) == 'sent':
+            try:
+                days.append(date.fromisoformat(key.removeprefix('daily-delivery:')))
+            except ValueError:
+                pass
+    return not days or (today - max(days)).days >= interval
 
 
 def main():
     should_run = True
     if os.getenv('DAILY_DELIVERY') == 'true':
-        today = datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
+        today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
+        config = yaml.safe_load(Path('config/brainsong.yaml').read_text(encoding='utf-8'))
+        profiles = config['operation_profiles']
+        interval = profiles['presets'][profiles['active']]['delivery_interval_days']
         state = State(Path('state') / 'brainsong.sqlite3')
         try:
-            should_run = state.get('daily-delivery:' + today) != 'sent'
+            should_run = delivery_due(state, today, interval)
         finally:
             state.close()
     output = os.getenv('GITHUB_OUTPUT')

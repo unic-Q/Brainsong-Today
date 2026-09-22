@@ -206,11 +206,11 @@ def from_search(rows, category="行业", domain=""):
     return items
 
 
-def bing_news(query, reader, today, category="行业", domain=""):
+def bing_news(query, reader, today, category="行业", domain="", lookback_days=30):
     terms = (f"site:{domain} " if domain else "") + query
     spec = {"id": "bing-news", "name": "Bing新闻", "kind": "feed", "category": category,
             "url": "https://www.bing.com/news/search?" + urlencode({"q": terms, "format": "rss", "setlang": "zh-cn"})}
-    rows = collect_source(spec, reader, today, [])
+    rows = collect_source(spec, reader, today, [], lookback_days=lookback_days)
     output = []
     for item in rows:
         # Bing RSS can wrap the actual article URL. Only unwrap its explicit url parameter.
@@ -272,7 +272,7 @@ def parse_listing(raw, spec):
     return list(result.values())[:100]
 
 
-def collect_source(spec, reader, today, rules, *, filter_relevance=True):
+def collect_source(spec, reader, today, rules, *, filter_relevance=True, lookback_days=30):
     kind = spec["kind"]
     url = spec["url"]
     category = spec.get("category", "行业")
@@ -287,7 +287,8 @@ def collect_source(spec, reader, today, rules, *, filter_relevance=True):
         reader.observations.append({"source": spec["id"], "stage": "arxiv_api", "error": str(exc), "fallback": True})
         raw = reader.get("https://rss.arxiv.org/rss/q-bio.NC+cs.HC+eess.SP")
     if kind in {"feed", "arxiv"}:
-        start = today-timedelta(days=30)
+        # A three-day window means today plus the two preceding calendar days.
+        start = today-timedelta(days=max(0, lookback_days-1))
         window = SearchWindow(datetime.combine(start, datetime.min.time(), BEIJING),
                               datetime.combine(today, datetime.max.time(), BEIJING))
         entries = parse_feed(raw, window, limit=100, content_token_limit=6000)

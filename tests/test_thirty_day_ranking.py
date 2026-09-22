@@ -32,15 +32,14 @@ def test_dictionary_banned_not_bciwiki():
     assert not prepare(Article('脑电定义', rows[0]['link'], str(DAY), '词典'), [], [])
 
 
-def test_all_categories_thirty_days_and_freshness_order(tmp_path):
+def test_active_profile_limits_all_categories_to_three_days(tmp_path):
     cfg, _, _, _ = load(ROOT)
-    assert set(cfg['windows'].values()) == {30}
+    assert set(cfg['windows'].values()) == {3}
     state = State(tmp_path/'test.db')
     fresh = Article('新品', 'https://example.org/a', str(DAY), '测试', score=70)
     old = Article('标准', 'https://example.org/b', str(DAY-timedelta(days=15)), '测试', category='政策', score=100)
     assert shortlist_score(old, DAY) == 5
-    # Once both qualify, relevance × authority can promote the older item.
-    assert select([old, fresh], state, DAY, cfg) == [old, fresh]
+    assert select([old, fresh], state, DAY, cfg) == [fresh]
     state.close()
 
 
