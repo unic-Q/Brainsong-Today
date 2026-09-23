@@ -160,6 +160,7 @@ class Article:
     first_reported: str = ''
     subject: str = ''
     recommendation_score: float | None = None
+    date_evidence: str = ''
 
     def __post_init__(self):
         self.url = canonical(self.url)

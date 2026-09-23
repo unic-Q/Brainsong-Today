@@ -113,6 +113,29 @@ def fresh_collection(items, cfg, today):
     return [item for item in items if not item.published or active_window(item, cfg, today)]
 
 
+def source_date_report(source_id, items, reader, raw_items=None):
+    """Show date coverage before and after the freshness window, per source."""
+    raw = next((row for row in reversed(reader.observations)
+                if row.get('source') == source_id and row.get('stage') == 'date_parse'), None)
+    baseline = raw_items if raw_items is not None else items
+    parsed = raw['parsed'] if raw else len(baseline)
+    dated = raw['dated'] if raw else sum(bool(item.published) for item in baseline)
+    return {'id': source_id, 'status': 'ok', 'parsed': parsed,
+            'dated_at_listing': dated,
+            'date_rate_pct': round(100 * dated / parsed, 1) if parsed else None,
+            'hint_unparsed': raw['hint_unparsed'] if raw else sum(
+                item.date_evidence == 'hint_unparsed' for item in baseline),
+            'no_date_hint': raw['no_date_hint'] if raw else sum(
+                item.date_evidence == 'no_date_hint' for item in baseline),
+            'returned': len(items), 'dated': sum(bool(item.published) for item in items)}
+
+
+def source_failure_report(source_id, status, error=None):
+    return {'id': source_id, 'status': status, 'error_type': type(error).__name__ if error else '',
+            'parsed': 0, 'dated_at_listing': 0, 'date_rate_pct': None,
+            'hint_unparsed': 0, 'no_date_hint': 0, 'returned': 0, 'dated': 0}
+
+
 def aggregate_page(item):
     text = item.title + ' ' + item.source
     return bool(re.search(
@@ -201,7 +224,7 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
 
 
 def process_candidates(items, cfg, rules, exclusions, state, provider, reader, today,
-                       progress, *, offline=False, no_ai=False):
+                       progress, *, offline=False, no_ai=False, date_checks=None):
     """Retain everything; spend enrichment and AI work only on priority batches."""
     pool = merge([a for a in items if not state.deleted(a)])
     queue = []
@@ -273,8 +296,13 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                 progress('article read', article=cursor-len(raw)+offset)
                 try:
                     metadata(item, reader.get(item.url))
+                    if date_checks is not None:
+                        date_checks.append({'source': item.source, 'status': item.date_evidence,
+                                            'dated': bool(item.published)})
                 except Exception as exc:
                     state.error(today, '文章读取:' + item.url, exc)
+                    if date_checks is not None:
+                        date_checks.append({'source': item.source, 'status': 'read_failed', 'dated': False})
             # In strict mode, a page whose newly discovered date is already
             # outside the window must not refresh the candidate store.
             if not offline and (not item.published or active_window(item, cfg, today)):
@@ -344,6 +372,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
     state.progress = provider.progress = progress
     progress('run start', cached_only=cached_only, resume=resume, send=send)
     source_stats = []
+    date_checks = []
     try:
         if not offline and not provider.key and (cfg["ai"]["enabled"] or cfg["search_enabled"]):
             raise ValueError("未配置智谱官方密钥；请设置ZHIPU_API_KEY或迁移本机密钥")
@@ -357,15 +386,14 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
             items = []
             for category, query, domain in ([] if cached_only else cfg.get('supplement_queries', [])):
                 try:
-                    collected = fresh_collection(
-                        from_search(provider.search(query, domain, recency=cfg['search_recency']), category, domain),
-                        cfg, today)
+                    found = from_search(provider.search(query, domain, recency=cfg['search_recency']), category, domain)
+                    collected = fresh_collection(found, cfg, today)
                     state.retain_candidates(collected, today)
                     items.extend(collected)
-                    source_stats.append({'id': 'supplement:' + category, 'returned': len(collected),
-                                         'dated': sum(bool(a.published) for a in collected)})
+                    source_stats.append(source_date_report('supplement:' + category, collected, reader, found))
                 except Exception as exc:
                     state.error(today, '定向补搜:' + category, exc)
+                    source_stats.append(source_failure_report('supplement:' + category, 'failed', exc))
         else:
             items = []
             site_searches = 0
@@ -379,15 +407,16 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                     if source["kind"] == "search":
                         if site_searches >= cfg.get('site_search_limit', 3):
                             progress('site search deferred ' + source['id'])
+                            source_stats.append(source_failure_report(source['id'], 'deferred'))
                             continue
                         site_searches += 1
                         rows = provider.search(source.get("query", "脑机接口 脑电 耳机 教育"), urlsplit(source["url"]).hostname,
                                                recency=cfg['search_recency'])
-                        collected = fresh_collection(
-                            from_search(rows, source.get("category", "行业"), urlsplit(source["url"]).hostname),
-                            cfg, today)
+                        found = from_search(rows, source.get("category", "行业"), urlsplit(source["url"]).hostname)
+                        collected = fresh_collection(found, cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
+                        source_stats.append(source_date_report(source['id'], collected, reader, found))
                     else:
                         collected = collect_source(source, reader, today, rules,
                                                    filter_relevance=False,
@@ -395,20 +424,20 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         collected = fresh_collection(collected, cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
-                        source_stats.append({"id": source["id"], "returned": len(collected),
-                                             "dated": sum(bool(a.published) for a in collected)})
+                        source_stats.append(source_date_report(source['id'], collected, reader))
                 except Exception as exc:
                     state.error(today, "信源:" + source["id"], exc)
+                    source_stats.append(source_failure_report(source['id'], 'failed', exc))
                 progress('source complete ' + source['id'], candidates=len(items))
             if cfg.get("wechat_enabled", False):
                 try:
                     collected = fresh_collection(collect_wechat(root, reader, today), cfg, today)
                     state.retain_candidates(collected, today)
                     items.extend(collected)
-                    source_stats.append({"id": "wechat", "returned": len(collected),
-                                         "dated": sum(bool(a.published) for a in collected)})
+                    source_stats.append(source_date_report('wechat', collected, reader))
                 except Exception as exc:
                     state.error(today, "微信公众号", exc)
+                    source_stats.append(source_failure_report('wechat', 'failed', exc))
             if cfg.get("public_news_search_enabled", False):
                 for topic, query in queries(rules, cfg, today):
                     if topic == "学术":
@@ -420,25 +449,26 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         collected = fresh_collection(collected, cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
-                        source_stats.append({"id": "bing:" + topic, "returned": len(collected),
-                                             "dated": sum(bool(a.published) for a in collected)})
+                        source_stats.append(source_date_report('bing:' + topic, collected, reader))
                     except Exception as exc:
                         state.error(today, "Bing补搜:" + topic, exc)
+                        source_stats.append(source_failure_report('bing:' + topic, 'failed', exc))
             if cfg["search_enabled"]:
                 for topic, query in queries(rules, cfg, today):
                     try:
                         domain = "arxiv.org" if topic == "学术" else ""
-                        collected = fresh_collection(
-                            from_search(provider.search(query, domain, recency=cfg['search_recency']),
-                                        {"政策": "政策", "学术": "学术", "资本": "资本"}.get(topic, "行业"), domain),
-                            cfg, today)
+                        found = from_search(provider.search(query, domain, recency=cfg['search_recency']),
+                                            {"政策": "政策", "学术": "学术", "资本": "资本"}.get(topic, "行业"), domain)
+                        collected = fresh_collection(found, cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
+                        source_stats.append(source_date_report('search:' + topic, collected, reader, found))
                     except Exception as exc:
                         state.error(today, "搜索:" + topic, exc)
+                        source_stats.append(source_failure_report('search:' + topic, 'failed', exc))
         pool, picks = process_candidates(items + state.candidates() + state.recent(today, cfg['lookback_days']),
                                          cfg, rules, exclusions, state, provider, reader, today,
-                                         progress, offline=offline, no_ai=no_ai)
+                                         progress, offline=offline, no_ai=no_ai, date_checks=date_checks)
         picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), shortlist_score(a, today, cfg.get('scoring')), a.identity), reverse=True)
         for item in picks:
             item.recommendation_score = ranking_score(item, today, cfg.get('scoring'))
@@ -492,7 +522,17 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
         logs = root / "logs"
         logs.mkdir(exist_ok=True)
         for observation in reader.observations:
+            if observation.get('stage') == 'date_parse':
+                continue
             state.error(today, "采集详情:" + observation.get("source", ""), json.dumps(observation, ensure_ascii=False))
+        source_names = {source['id']: source['name'] for source in sources}
+        for report in source_stats:
+            checks = [row for row in date_checks if row['source'] == source_names.get(report['id'])]
+            report['detail_checked'] = len(checks)
+            report['detail_date_resolved'] = sum(row['dated'] for row in checks)
+            report['detail_hint_unparsed'] = sum(row['status'] == 'hint_unparsed' for row in checks)
+            report['detail_no_date_hint'] = sum(row['status'] == 'no_date_hint' for row in checks)
+            report['detail_read_failed'] = sum(row['status'] == 'read_failed' for row in checks)
         (logs / f"{today.isoformat()}-sources.json").write_text(json.dumps(source_stats, ensure_ascii=False, indent=2), encoding="utf-8")
         (logs / f"{today.isoformat()}-ai.json").write_text(json.dumps({"calls": provider.calls, "usage": provider.usage,
                                                                    "responses": provider.diagnostics}, ensure_ascii=False, indent=2), encoding="utf-8")
