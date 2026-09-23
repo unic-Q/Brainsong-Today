@@ -152,6 +152,7 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
     """Recent business-relevant evidence first; convenience cannot outrank value."""
     analysis_counts = analysis_counts if analysis_counts is not None else Counter()
     replacement_counts = replacement_counts if replacement_counts is not None else Counter()
+    direction_priority = {'政策': 0, '行业': 1, '资本': 2, '学术': 3, '展会': 4}
     def needs_read(a):
         return not a.published or (not usable_summary(a.summary, a.title) and not a.body)
     def full(a):
@@ -181,11 +182,12 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
             evidence_level = 2 if not a.published else 1 if needs_read(a) else 0
             representation = sum(p.category == a.category for p in picks + result)
             recent = date_priority(a) if cfg.get('acquisition', {}).get('recency_first') else 0
-            # Spend scarce AI slots across directions before deepening one rich
-            # source pool. A full direction can only use its explicit replacement slot.
-            return (full(a), analysis_counts[a.category] + sum(x.category == a.category for x in result),
-                    not (a.exploration and exploration_due),
+            # Analyze plausible candidates in priority order, cycling across
+            # directions before allowing one rich source pool to fill the budget.
+            return (full(a), not (a.exploration and exploration_due),
                     estimated_relevance(a, cfg) < 60,
+                    analysis_counts[a.category] + sum(x.category == a.category for x in result),
+                    direction_priority.get(a.category, 5),
                     -recent,
                     -estimate(a), -source_priority(a, cfg), representation, evidence_level, a.identity)
         chosen = min(available, key=priority)
@@ -332,6 +334,10 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
         raise ValueError("离线样例不允许推送")
     state_path = Path(state_path) if state_path else (":memory:" if offline else root / "state/brainsong.sqlite3")
     state = State(state_path)
+    if not send and not offline:
+        preview = state.preview_without_delivery_history()
+        state.close()
+        state = preview
     provider = OfficialGLM("" if offline else api_key(), cfg["ai"]["model"])
     reader = Reader()
     progress = Progress(root / 'logs' / f'{today}-progress.log')

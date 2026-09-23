@@ -29,6 +29,15 @@ class State:
         if check != "ok":
             raise RuntimeError("历史数据库损坏，停止推送")
 
+    def preview_without_delivery_history(self):
+        """Use a disposable snapshot so previews neither read nor change delivery history."""
+        preview = State(":memory:")
+        self.db.backup(preview.db)
+        with preview.db:
+            preview.db.execute('DELETE FROM delivered')
+            preview.db.execute('DELETE FROM policy_delivered')
+        return preview
+
     def get(self, key, default=None):
         row = self.db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
         return json.loads(row[0]) if row else default

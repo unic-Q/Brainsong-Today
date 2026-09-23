@@ -93,6 +93,15 @@ def test_analysis_slots_are_balanced_before_deepening_one_direction():
     assert counts['学术'] <= 2
 
 
+def test_analysis_slots_follow_direction_priority_within_each_round():
+    order = ['政策', '行业', '资本', '学术']
+    rows = [Article(f'脑机接口进展{category}{i}', f'https://example.org/{category}/{i}',
+                    str(DAY), '官网', '脑电产品发布新进展。', category=category)
+            for i in range(2) for category in order]
+    batch = pipeline.direction_batch(rows, [], {}, lambda a: 80, len(rows))
+    assert [item.category for item in batch] == order * 2
+
+
 def test_full_direction_gets_only_one_clear_replacement_check():
     picks = [make_item(i, '学术') for i in range(3)]
     papers = [make_item(i+10, '学术') for i in range(5)]

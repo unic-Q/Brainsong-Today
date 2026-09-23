@@ -23,8 +23,8 @@ def test_old_high_score_cannot_evict_recent_within_category(tmp_path):
     older=[item(i+10,age=15,score=100,domain='www.nature.com') for i in range(6)]
     other=[item(30,'行业',score=90),item(31,'政策',score=90)]
     picks=select(fresh+older+other,state,DAY,cfg)
-    assert len(picks)==5
-    assert {a.identity for a in picks if a.category=='学术'}=={a.identity for a in fresh}
+    assert len(picks)==4
+    assert {a.identity for a in picks if a.category=='学术'}=={a.identity for a in fresh[1:]}
     state.close()
 
 
@@ -118,17 +118,37 @@ def test_schedule_is_gated_and_reset_never_scheduled():
 
 def test_three_day_profile_is_active_and_reversible():
     cfg=load(ROOT)[0]
-    assert cfg['lookback_days'] == 3 and cfg['delivery_interval_days'] == 3
+    assert cfg['lookback_days'] == 3 and cfg['delivery_interval_days'] == 1
     assert cfg['search_recency'] == 'oneWeek'
     assert set(cfg['operation_profiles']['presets']) == {'three_day', 'daily_30d'}
     assert set(cfg['windows'].values()) == {3}
     assert cfg['strict_event_freshness'] and cfg['reject_aggregate_pages']
+    assert cfg['max_academic_items'] == 2
+
+
+def test_preview_ignores_sent_history_without_changing_formal_state(tmp_path):
+    state = State(tmp_path / 'state.db')
+    news = item(50, age=0)
+    policy = item(51, age=0)
+    policy.category = '政策'
+    state.mark([news, policy], DAY, 'sent')
+    state.put('daily-delivery:' + str(DAY), 'sent')
+    preview = state.preview_without_delivery_history()
+    assert not preview.sent(news) and not preview.sent(policy)
+    assert preview.get('daily-delivery:' + str(DAY)) == 'sent'
+    preview.mark([item(52, age=0)], DAY, 'sent')
+    preview.close()
+    assert state.sent(news) and state.sent(policy)
+    assert state.db.execute('SELECT COUNT(*) FROM delivered').fetchone()[0] == len(news.aliases()) + len(policy.aliases())
+    state.close()
 
 
 def test_three_day_delivery_guard(tmp_path):
     state=State(tmp_path/'guard.db')
     assert state.delivery_due(DAY,3)
     state.put('daily-delivery:'+str(DAY),'sent')
+    assert not state.delivery_due(DAY,1)
+    assert state.delivery_due(DAY+timedelta(days=1),1)
     assert not state.delivery_due(DAY+timedelta(days=2),3)
     assert state.delivery_due(DAY+timedelta(days=3),3)
     state.close()
