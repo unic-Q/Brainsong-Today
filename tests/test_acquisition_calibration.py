@@ -51,7 +51,7 @@ def test_today_gets_analysis_and_shortlist_before_older_items(tmp_path):
 
 def test_calibration_examples_reach_model_and_change_cache_signature(tmp_path):
     cfg,policy,_,_=load(ROOT)
-    assert [x['score'] for x in cfg['relevance_examples']]==[80,50,0,40,100,50,80,90,30,10,100,70]
+    assert [x['score'] for x in cfg['relevance_examples']]==[80,50,0,40,100,50,80,90,85,30,10,100,70]
     class AI:
         calls=0
         def chat(self,task,payload):
@@ -77,3 +77,12 @@ def test_paper_hint_and_noninvasive_financing_are_not_misclassified():
     for title,expected in [('非侵入式脑电耳机公司融资5000万元',80),('植入式脑机公司融资5亿元',50)]:
         a=item(title); prepare(a,policy['rules'],policy['exclude'])
         assert estimated_relevance(a,cfg)==expected
+
+
+def test_emotion_recognition_is_positive_in_chinese_and_english():
+    cfg, policy, _, _ = load(ROOT)
+    for title in ('脑电情绪识别模型发表论文', 'EEG emotion recognition model study'):
+        paper = item(title)
+        assert prepare(paper, policy['rules'], policy['exclude'])
+        assert any(rule['id'] == 'r17-情绪识别' for rule in paper.matches)
+        assert estimated_relevance(paper, cfg) == 85

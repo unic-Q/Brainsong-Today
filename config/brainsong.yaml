@@ -1,6 +1,6 @@
 profile: >-
   Brainsong是一家北京的小型初创企业，做非医疗用途的消费级脑机/脑电产品，融合头戴式耳机、眼镜等形态，
-  主要应用于教育、睡眠和情绪。最高优先级是脑机接口和脑电大模型；高优先级包括耳周EEG、脑电耳机、
+  主要应用于教育、睡眠和情绪。最高优先级是脑机接口和脑电大模型；高优先级包括耳周EEG、脑电耳机、脑电情绪识别、
   教育与耳机结合、脑电数据采集/存储/数据集。也关注干电极、芯片和渠道等可复用供应链，以及新兴企业。
   权重表达我们研发和商业决策的重要程度，不是大众热度。单纯教育新闻不能入选；耳机与教育应用相关才有价值。
   政策只关注中国国内的全国政策和省市地方政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管；境外政策不入选。
@@ -15,6 +15,7 @@ relevance_examples:
   - {text: '大型品牌普通降噪耳机音质续航升级，无脑电或教育应用', score: 50}
   - {text: '课堂耳机支持听觉训练和教师管理，不采集脑电', score: 80}
   - {text: '脑电基础模型跨数据集效果提升，开放模型和代码', score: 90}
+  - {text: '脑电情绪识别论文提供可复用模型和公开验证数据', score: 85}
   - {text: '植入式脑机同步解码瘫痪患者言语和手势', score: 30}
   - {text: '脑电认知负荷课堂90人应用试验，未公开代码', score: 10}
   - {text: '国家神经数据隐私与未成年人保护要求覆盖消费级脑电', score: 100}
@@ -23,6 +24,7 @@ acquisition:
   recency_first: true
   # Acquisition estimates only, never final relevance scores or hard rejection rules.
   priority_hints:
+    - {all: ['脑电|EEG|electroencephal', '情绪识别|情感识别|情感计算|emotion recognition|affective computing|emotion decoding'], score: 85}
     - {all: ['脑电|EEG', '课堂|classroom', '认知负荷|cognitive load', '试验|实验|trial|study', '未公开代码|未开源|no open.source'], score: 10}
     - {all: ['非侵入|non.invasive', '脑电|EEG', '融资|funding|raises'], score: 80}
     - {all: ['(?<!非)植入|(?<!非)侵入|\bimplant(?:ed|able)?\b|(?<!non-)(?<!non )\binvasive\b|\bECoG\b', '融资|funding|raises'], score: 50}
@@ -55,6 +57,7 @@ scoring:
   # Editable editorial presets, not objective measurements of reputation.
   # Applied once inside each independent stage, never compounded to 1.44x.
   category_weights: {行业: 1.2, 资本: 1.2, 政策: 1.2, 学术: 1.0}
+  academic_eeg_without_emotion_factor: 0.95
   source_weights: {authority: 0.7, recognition: 0.3}
   source_reputation:
     original: [85, 60]

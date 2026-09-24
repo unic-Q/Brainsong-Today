@@ -75,6 +75,9 @@ def load(root):
             type(value) not in (int, float) or not 1 <= value <= 1.5
             for value in category_weights.values()):
         raise ValueError('分类业务权重必须完整，且为1到1.5')
+    academic_factor = scoring.get('academic_eeg_without_emotion_factor', 1.0)
+    if type(academic_factor) not in (int, float) or not .9 <= academic_factor <= 1.0:
+        raise ValueError('非情绪识别脑电论文系数必须在0.9到1之间')
     weights = scoring.get('source_weights', {'authority': .7, 'recognition': .3})
     if set(weights) != {'authority', 'recognition'} or any(not isinstance(v, (int, float)) or not 0 <= v <= 1 for v in weights.values()) or abs(sum(weights.values())-1) > .000001:
         raise ValueError('来源权重必须非负且合计1')
@@ -525,7 +528,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
             if observation.get('stage') == 'date_parse':
                 continue
             state.error(today, "采集详情:" + observation.get("source", ""), json.dumps(observation, ensure_ascii=False))
-        source_names = {source['id']: source['name'] for source in sources}
+        source_names = {source['id']: source.get('name') or source['id'] for source in sources}
         for report in source_stats:
             checks = [row for row in date_checks if row['source'] == source_names.get(report['id'])]
             report['detail_checked'] = len(checks)

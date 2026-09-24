@@ -201,14 +201,18 @@ rules:
   exploration: false
   direct: false
 - id: r17-情绪识别
-  weight: 80
+  weight: 85
   groups:
   - - 情绪识别
+    - 情感识别
     - 情感计算
+    - emotion recognition
+    - affective computing
+    - emotion decoding
   purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
   topics:
   - 核心
-  query: 情绪识别 OR 情感计算
+  query: 情绪识别 OR 情感识别 OR 情感计算 OR emotion recognition
   exploration: false
   direct: false
 - id: r18-学生情绪监测

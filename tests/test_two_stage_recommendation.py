@@ -54,6 +54,25 @@ def test_business_category_weight_is_capped_at_100():
     assert effective_relevance(item, scoring) == 100
 
 
+def test_eeg_papers_without_emotion_recognition_get_only_a_small_discount():
+    scoring = {'academic_eeg_without_emotion_factor': .95,
+               'source_domains': {'strong.test': [100, 100]}}
+    plain = Article('脑电信号处理研究', 'https://strong.test/plain', str(DAY), '期刊',
+                    relevance=80, category='学术')
+    emotion = Article('脑电情绪识别研究', 'https://strong.test/emotion', str(DAY), '期刊',
+                      relevance=80, category='学术')
+    english = Article('EEG emotion recognition study', 'https://strong.test/english', str(DAY), '期刊',
+                      relevance=80, category='学术')
+    industry = Article('脑电产品发布', 'https://strong.test/product', str(DAY), '媒体',
+                       relevance=80, category='行业')
+    assert effective_relevance(plain, scoring) == 76
+    assert shortlist_score(plain, DAY, scoring) == 76
+    assert ranking_score(plain, DAY, scoring) == 76
+    assert effective_relevance(emotion, scoring) == 80
+    assert effective_relevance(english, scoring) == 80
+    assert effective_relevance(industry, scoring) == 80
+
+
 def test_policy_scope_keeps_china_and_rejects_foreign_policy():
     row = {'relevance':90, 'accept':True, 'category':'政策', 'tags':[]}
     domestic = Article('国家药监局发布脑机接口标准', 'https://www.nmpa.gov.cn/policy', str(DAY), '国家药监局')

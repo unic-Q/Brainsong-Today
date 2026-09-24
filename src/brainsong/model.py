@@ -74,10 +74,23 @@ def category_factor(item, scoring=None) -> float:
     return float(weights.get(item.category, 1.0))
 
 
+def academic_topic_factor(item, scoring=None) -> float:
+    """Slightly deprioritize EEG papers outside the emotion-recognition focus."""
+    factor = float((scoring or {}).get('academic_eeg_without_emotion_factor', 1.0))
+    if item.category != '学术' or factor == 1.0:
+        return 1.0
+    text = ' '.join((item.title, item.source_summary, item.summary, item.body[:1000]))
+    if not re.search(r'脑电|\bEEG\b|electroencephal', text, re.I):
+        return 1.0
+    if re.search(r'情绪识别|情感识别|情感计算|emotion recognition|affective computing|emotion decoding', text, re.I):
+        return 1.0
+    return factor
+
+
 def effective_relevance(item, scoring=None) -> float:
     """Weighted relevance, capped once; callers must not compound the factor."""
     base = item.relevance if item.relevance is not None else item.score
-    return min(100.0, max(0.0, base * category_factor(item, scoring)))
+    return min(100.0, max(0.0, base * category_factor(item, scoring) * academic_topic_factor(item, scoring)))
 
 
 def shortlist_score(item, today: date, scoring=None) -> float:
