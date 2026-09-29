@@ -75,7 +75,10 @@ class State:
                     value['summary'] = prior_source
                 value['source_summary'] = value['summary']
                 value['source_excerpt'] = value['source_excerpt'] or previous.get('source_excerpt', '') or previous.get('body', '')[:6000]
-                value['published'] = value['published'] or previous.get('published', '')
+                if not value['published'] and previous.get('published'):
+                    value['published'] = previous['published']
+                    value['date_evidence'] = previous.get('date_evidence', '')
+                value['first_reported'] = value['first_reported'] or previous.get('first_reported', '')
                 value['body'] = value['body'] or previous.get('body', '')
             self.db.execute('''INSERT INTO candidate_inputs VALUES (?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, payload=excluded.payload''',
@@ -85,6 +88,13 @@ class State:
     def candidates(self):
         return [a for r in self.db.execute('SELECT payload FROM candidate_inputs')
                 if not self.deleted(a := Article(**json.loads(r[0])))]
+
+    def ever_seen(self, item):
+        """A fresh listing is only one absent from all persisted candidate/history tables."""
+        if self.deleted(item) or self.sent(item):
+            return True
+        return any(self.db.execute(f'SELECT 1 FROM {table} WHERE id=?', (item.identity,)).fetchone()
+                   for table in ('candidate_inputs', 'articles'))
 
     def deleted(self, item):
         return any(self.db.execute('SELECT 1 FROM deleted_candidates WHERE alias=?', (k,)).fetchone()
@@ -104,7 +114,7 @@ class State:
                 self.db.executemany(f'DELETE FROM {table} WHERE id=?', [(key,) for key in ids])
                 for key in ids:
                     self.db.executemany('DELETE FROM kv WHERE key=?',
-                                        [(prefix + key,) for prefix in ('ai:', 'summary-v2:', 'summary-v3:', 'summary-v4:', 'summary-v5:')])
+                                        [(prefix + key,) for prefix in ('ai:', 'summary-v2:', 'summary-v3:', 'summary-v4:', 'summary-v5:', 'summary-v6:')])
 
     def release_candidates(self, today):
         """Record successful delivery; expiry remains based on publication/first seen."""
@@ -238,7 +248,7 @@ class State:
         self.db.execute("DELETE FROM delivered WHERE day<? AND status!='pending'", ((today-timedelta(days=365)).isoformat(),))
         cutoff = (today-timedelta(days=30)).isoformat()
         stale = []
-        for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'ai:%' OR key LIKE 'summary-v2:%' OR key LIKE 'summary-v3:%' OR key LIKE 'summary-v4:%' OR key LIKE 'summary-v5:%' OR key LIKE 'headline-v1:%' OR key LIKE 'dedup:%'"):
+        for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'ai:%' OR key LIKE 'summary-v2:%' OR key LIKE 'summary-v3:%' OR key LIKE 'summary-v4:%' OR key LIKE 'summary-v5:%' OR key LIKE 'summary-v6:%' OR key LIKE 'headline-v1:%' OR key LIKE 'dedup:%'"):
             if json.loads(value).get("day", "") < cutoff:
                 stale.append((key,))
         self.db.executemany("DELETE FROM kv WHERE key=?", stale)

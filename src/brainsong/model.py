@@ -68,6 +68,28 @@ def source_factor(item, scoring=None):
     return (authority * weights['authority'] + recognition * weights['recognition']) / 100
 
 
+def source_key(item) -> str:
+    """Stable publisher identity for the soft pre-analysis source share."""
+    host = (urlsplit(item.url).hostname or '').lower().rstrip('.')
+    if host.startswith('www.'):
+        host = host[4:]
+    if host == 'mp.weixin.qq.com' and item.source.strip():
+        return 'wechat:' + item.source.strip().casefold()
+    return host or canonical(item.url) or item.source.strip().casefold()
+
+
+def verified_arxiv_date(item) -> bool:
+    """An arXiv index/RSS announcement is not proof of a new paper revision."""
+    if (urlsplit(item.url).hostname or '').lower() not in {'arxiv.org', 'www.arxiv.org'}:
+        return True
+    try:
+        first = date.fromisoformat(item.first_submitted)
+        latest = date.fromisoformat(item.last_revised)
+    except ValueError:
+        return False
+    return first <= latest and item.published == item.last_revised
+
+
 def category_factor(item, scoring=None) -> float:
     """Business-priority multiplier shared by both independent score stages."""
     weights = (scoring or {}).get('category_weights', {})
@@ -174,6 +196,9 @@ class Article:
     subject: str = ''
     recommendation_score: float | None = None
     date_evidence: str = ''
+    first_submitted: str = ''
+    last_revised: str = ''
+    arxiv_version: str = ''
 
     def __post_init__(self):
         self.url = canonical(self.url)

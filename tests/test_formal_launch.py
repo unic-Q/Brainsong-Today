@@ -49,7 +49,7 @@ def test_link_only_only_fills_failed_qualified_items_without_breaking_caps(tmp_p
     lower=item(43,'资本',score=70,failed=True)
     result=fill_link_only(picks,[low,full_category,lower,valid],state,DAY,cfg)
     assert result==picks+[valid] and not valid.summary
-    text=render(result,[],DAY)[1]
+    text=render(result,DAY)[1]
     assert valid.url in text and '摘要失败' not in text
     assert fill_link_only(result,[lower],state,DAY,cfg)==result
     state.mark([valid],DAY,'sent')

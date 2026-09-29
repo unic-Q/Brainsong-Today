@@ -5,7 +5,8 @@ import json
 import re
 import socket
 import time
-from datetime import date, datetime, timedelta
+import xml.etree.ElementTree as ET
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
@@ -373,13 +374,50 @@ def record_date_parse(reader, source_id, items):
                                     'no_date_hint': sum(a.date_evidence == 'no_date_hint' for a in items)})
 
 
+def arxiv_entries(raw, today, lookback_days, source):
+    """Accept only arXiv Atom entries with explicit submission/version dates."""
+    root = ET.fromstring(raw)
+    atom = '{http://www.w3.org/2005/Atom}'
+    start = today - timedelta(days=max(0, lookback_days - 1))
+    result = []
+    for entry in root.findall(atom + 'entry'):
+        first_raw = entry.findtext(atom + 'published', default='')
+        revised_raw = entry.findtext(atom + 'updated', default='')
+        try:
+            first = datetime.fromisoformat(first_raw.replace('Z', '+00:00'))
+            revised = datetime.fromisoformat(revised_raw.replace('Z', '+00:00'))
+            if first.tzinfo is None or revised.tzinfo is None or revised < first:
+                continue
+            first_day = first.astimezone(timezone.utc).date()
+            revised_day = revised.astimezone(timezone.utc).date()
+        except ValueError:
+            continue
+        if not start <= revised_day <= today:
+            continue
+        raw_id = entry.findtext(atom + 'id', default='').strip()
+        match = re.fullmatch(r'https?://(?:www\.)?arxiv\.org/abs/([^/?#]+?)(v\d+)?', raw_id)
+        if not match:
+            continue
+        url = 'https://arxiv.org/abs/' + match[1]
+        title = re.sub(r'\s+', ' ', entry.findtext(atom + 'title', default='')).strip()
+        summary = re.sub(r'\s+', ' ', entry.findtext(atom + 'summary', default='')).strip()
+        if not title or not summary:
+            continue
+        result.append(Article(title, url, revised_day.isoformat(), source, summary,
+                              category='学术', date_evidence='arxiv_version',
+                              first_submitted=first_day.isoformat(),
+                              last_revised=revised_day.isoformat(),
+                              arxiv_version=match[2] or ('v1' if first == revised else '')))
+    return result
+
+
 def collect_source(spec, reader, today, rules, *, filter_relevance=True, lookback_days=30):
     kind = spec["kind"]
     url = spec["url"]
     category = spec.get("category", "行业")
     if kind == "arxiv":
         query = spec.get("query", '(cat:q-bio.NC OR cat:cs.HC OR cat:eess.SP OR cat:cs.LG) AND (all:"EEG" OR all:"ear-EEG" OR all:"brain-computer interface")')
-        url += "?" + urlencode({"search_query": query, "sortBy": "submittedDate", "sortOrder": "descending", "max_results": 80})
+        url += "?" + urlencode({"search_query": query, "sortBy": "lastUpdatedDate", "sortOrder": "descending", "max_results": 80})
     try:
         raw = reader.arxiv_api(url) if kind == "arxiv" else reader.get(url)
     except Exception as exc:
@@ -387,13 +425,17 @@ def collect_source(spec, reader, today, rules, *, filter_relevance=True, lookbac
             raise
         reader.observations.append({"source": spec["id"], "stage": "arxiv_api", "error": str(exc), "fallback": True})
         raw = reader.get("https://rss.arxiv.org/rss/q-bio.NC+cs.HC+eess.SP")
-    if kind in {"feed", "arxiv"}:
+    if kind == 'arxiv':
+        result = arxiv_entries(raw, today, lookback_days, spec['name'])
+        record_date_parse(reader, spec['id'], result)
+        return result
+    if kind == "feed":
         # A three-day window means today plus the two preceding calendar days.
         start = today-timedelta(days=max(0, lookback_days-1))
         window = SearchWindow(datetime.combine(start, datetime.min.time(), BEIJING),
                               datetime.combine(today, datetime.max.time(), BEIJING))
         entries = parse_feed(raw, window, limit=100, content_token_limit=6000)
-        result = [Article(e.title, re.sub(r"v\d+$", "", e.url.replace("http://arxiv.org/", "https://arxiv.org/")) if kind == "arxiv" else e.url, e.published_at.astimezone(BEIJING).date().isoformat(),
+        result = [Article(e.title, e.url, e.published_at.astimezone(BEIJING).date().isoformat(),
                           spec["name"], e.summary, e.content, category=category, date_evidence='feed') for e in entries]
         record_date_parse(reader, spec['id'], result)
         return result

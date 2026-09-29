@@ -1,7 +1,7 @@
 from datetime import date
 
-from brainsong.collect import collect_source, date_text, metadata, parse_listing, url_date
-from brainsong.model import Article
+from brainsong.collect import arxiv_entries, collect_source, date_text, metadata, parse_listing, url_date
+from brainsong.model import Article, verified_arxiv_date
 from brainsong.pipeline import source_date_report, source_failure_report
 
 
@@ -48,11 +48,22 @@ def test_arxiv_fallback_is_reported_and_normalized():
             raise RuntimeError("429")
         def get(self, url):
             assert "rss.arxiv.org" in url
-            return '''<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>EEG research</title><id>x</id><link href="http://arxiv.org/abs/2609.12345v2"/><published>2026-09-17T00:00:00Z</published><summary>EEG abstract</summary></entry></feed>'''
+            return '''<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>EEG research</title><id>http://arxiv.org/abs/2609.12345v2</id><published>2026-09-15T00:00:00Z</published><updated>2026-09-17T00:00:00Z</updated><summary>EEG abstract</summary></entry></feed>'''
     reader = Reader()
     rows = collect_source({"id": "arxiv", "name": "arxiv", "url": "https://export.arxiv.org/api/query", "kind": "arxiv"}, reader, date(2026, 9, 17), [RULE])
     assert rows[0].url == "https://arxiv.org/abs/2609.12345"
+    assert rows[0].first_submitted == '2026-09-15'
+    assert rows[0].last_revised == '2026-09-17'
     assert reader.observations[0]["fallback"]
+
+
+def test_arxiv_announcement_without_version_date_is_not_fresh():
+    rss = '''<rss><channel><item><title>LEAD</title><link>https://arxiv.org/abs/2502.01678</link>
+      <pubDate>Mon, 28 Sep 2026 00:00:00 GMT</pubDate></item></channel></rss>'''
+    assert arxiv_entries(rss, date(2026, 9, 28), 3, 'arXiv') == []
+    old = Article('LEAD', 'https://arxiv.org/abs/2502.01678', '2026-09-28', 'arXiv',
+                  date_evidence='feed')
+    assert not verified_arxiv_date(old)
 
 
 def test_finance_detail_dates():

@@ -6,7 +6,6 @@ import pytest
 
 from brainsong.collect import from_search
 from brainsong.editor import apply_assessment, display_summary, merge, prepare, render, select, summarize
-from brainsong.events import month_before, verify_events
 from brainsong.model import Article, canonical
 from brainsong.pipeline import load, run
 from brainsong.provider import OfficialGLM, assess, CHAT, SEARCH
@@ -75,18 +74,17 @@ def test_persistent_send_state(tmp_path):
     state.close()
 
 
-def test_score_first_seven_cap_and_two_events(tmp_path):
+def test_score_first_seven_cap(tmp_path):
     state = State(tmp_path / "s.db")
-    cfg, _, _, _ = load(ROOT)
+    cfg, _, _ = load(ROOT)
     items = [article(i, score=100) for i in range(8)]
     items[-1].category, items[-1].score = "政策", 55
     picks = select(items, state, DAY, cfg)
     assert len(picks) == 4
     assert sum(a.category == '行业' for a in picks) == 3
-    events = [{"name": "测试展", "date": "2026-09-20", "place": "上海", "kind": "开展", "url": "https://example.org"}]*3
-    title, body = render(picks, events, DAY)
+    title, body = render(picks, DAY)
     assert title == "Brainsong Today | 2026-09-17"
-    assert body.count("[展会]") == 3 and "每日简报" not in body and "推荐理由" not in body
+    assert "[展会]" not in body and "每日简报" not in body and "推荐理由" not in body
     state.close()
 
 
@@ -160,15 +158,6 @@ def test_search_missing_date_not_invented():
     assert items[0].published == "" and not items[0].in_window(DAY, {"行业": 3})
 
 
-def test_one_calendar_month_and_unverified_hidden(tmp_path):
-    assert month_before(date(2026, 9, 20)) == date(2026, 8, 20)
-    assert month_before(date(2026, 3, 31)) == date(2026, 2, 28)
-    state = State(tmp_path / "s.db")
-    events = [{"name": "展会", "date": "2026-09-20", "place": "上海", "kind": "开展", "url": "https://example.org"}]
-    assert verify_events(events, DAY, None, None, state, offline=True) == []
-    state.close()
-
-
 def test_offline_end_to_end_no_calls(tmp_path, monkeypatch):
     import shutil
     shutil.copytree(ROOT / "config", tmp_path / "config")
@@ -191,7 +180,7 @@ def test_ai_failure_logs_and_conservative_fallback(tmp_path):
     class Failed:
         def chat(self, *args, **kwargs):
             raise ValueError("secret-should-not-appear")
-    cfg, _, _, _ = load(ROOT)
+    cfg, _, _ = load(ROOT)
     state = State(tmp_path/'s.db')
     a = article(matches=[RULE])
     unrelated = article(2, matches=[dict(RULE, direct=False)])
@@ -210,7 +199,7 @@ def test_ai_score_cache_invalidated_by_profile(tmp_path):
             self.calls += 1
             return {'items':[{'id':row['id'],'relevance':90,'accept':True,'category':'行业','tags':['耳机']}
                              for row in payload['articles']]}
-    cfg, _, _, _ = load(ROOT)
+    cfg, _, _ = load(ROOT)
     state, ai = State(tmp_path/'s.db'), AI()
     relevance_filter([article(matches=[RULE])], ai, cfg, [RULE], state, DAY)
     relevance_filter([article(matches=[RULE])], ai, cfg, [RULE], state, DAY)
@@ -239,7 +228,7 @@ def test_pending_prevents_automatic_resend(tmp_path):
 
 def test_exploration_does_not_displace_policy(tmp_path):
     state = State(tmp_path/'s.db')
-    cfg, _, _, _ = load(ROOT)
+    cfg, _, _ = load(ROOT)
     state.put('counts', {'total':100,'exploration':0})
     rows = [article(i, category='政策', score=60) for i in range(7)]
     rows.append(article(7, exploration=True, score=100))
@@ -247,13 +236,6 @@ def test_exploration_does_not_displace_policy(tmp_path):
     assert sum(a.category == '政策' for a in picks) <= 3
     assert any(a.exploration for a in picks)
     state.close()
-
-
-def test_date_evidence_multilingual():
-    from brainsong.events import date_mentioned
-    assert date_mentioned(date(2027,4,13),'13-16 April 2027, Hong Kong')
-    assert date_mentioned(date(2027,4,13),'2027年4月13日至16日，香港')
-    assert not date_mentioned(date(2027,4,13),'13-16 April 2026, Hong Kong')
 
 
 def test_provider_refuses_model_tool_call():

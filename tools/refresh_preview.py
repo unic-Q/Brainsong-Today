@@ -18,7 +18,7 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
-    cfg, _, _, _ = load(root)
+    cfg, _, _ = load(root)
     state = State(args.state)
     provider = OfficialGLM(api_key(), cfg['ai']['model'])
     picks, rejected = [], set()
@@ -41,11 +41,11 @@ def main():
                 compact_title(item, provider, state, today)
                 state.save(item)
                 picks.append(item)
-        title, body = render(picks, [], today)
+        title, body = render(picks, today)
         output = root / 'reports' / str(today) / 'seven-preview'
         output.mkdir(parents=True, exist_ok=True)
         (output / 'brief.md').write_text(body, encoding='utf-8')
-        (output / 'brief.json').write_text(json.dumps({'title': title, 'items': [a.record() for a in picks], 'events': [], 'sent': False}, ensure_ascii=False, indent=2), encoding='utf-8')
+        (output / 'brief.json').write_text(json.dumps({'title': title, 'items': [a.record() for a in picks], 'sent': False}, ensure_ascii=False, indent=2), encoding='utf-8')
         (output / 'usage.json').write_text(json.dumps({'calls': provider.calls, 'usage': provider.usage}, indent=2), encoding='utf-8')
         print(json.dumps({'report': str(output / 'brief.md'), 'items': len(picks), 'sent': False, 'calls': provider.calls}, ensure_ascii=False))
     finally:

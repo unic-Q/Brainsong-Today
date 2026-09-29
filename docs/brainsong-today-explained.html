@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Brainsong Today · 工作原理</title>
+  <style>
+    :root { --paper:#F8F7F4; --ink:#232425; --warm:#E6A05B; --warm-dark:#A9622E; --warm-light:#F8E8D7; --line:#DDD9D1; --muted:#636561; --white:#FFF; --soft:#EFEEE9; --green:#4A7963; --green-light:#EAF3ED; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",Arial,sans-serif; line-height:1.55; }
+    a { color:inherit; }
+    .wrap { width:min(1180px,calc(100% - 56px)); margin:auto; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; padding:22px 0; gap:20px; }
+    .wordmark { font-size:16px; font-weight:800; letter-spacing:-.02em; display:flex; align-items:center; gap:11px; text-decoration:none; }
+    .wordmark::before { content:""; width:10px; height:10px; border-radius:50%; background:var(--warm); box-shadow:0 0 0 5px var(--warm-light); }
+    nav { display:flex; flex-wrap:wrap; gap:22px; color:var(--muted); font-size:13px; font-weight:650; }
+    nav a { text-decoration:none; }
+    nav a:hover { color:var(--warm-dark); }
+    .hero { background:var(--ink); color:var(--paper); border-radius:28px; padding:60px 66px 56px; display:grid; grid-template-columns:minmax(0,1.4fr) minmax(230px,.65fr); align-items:center; overflow:hidden; position:relative; }
+    .hero > div { min-width:0; }
+    .hero::after { content:""; position:absolute; width:430px; height:430px; right:-160px; top:-210px; border:1px solid rgba(230,160,91,.24); border-radius:50%; box-shadow:0 0 0 90px rgba(230,160,91,.035),0 0 0 180px rgba(230,160,91,.025); pointer-events:none; }
+    .eyebrow { display:inline-flex; align-items:center; gap:9px; color:var(--warm); text-transform:uppercase; letter-spacing:.18em; font-size:12px; font-weight:800; }
+    .eyebrow::before { content:""; width:22px; height:2px; background:currentColor; }
+    h1 { font-size:clamp(40px,5.4vw,72px); line-height:1.08; letter-spacing:-.055em; margin:18px 0 24px; }
+    .hero p { font-size:17px; max-width:610px; color:#D9D9D5; margin:0; }
+    .hero strong { color:var(--warm); font-weight:750; }
+    .avatar-frame { justify-self:end; width:min(100%,260px); aspect-ratio:1; padding:18px; border-radius:32px; background:#F7F5F0; transform:rotate(4deg); box-shadow:0 26px 75px rgba(0,0,0,.28); position:relative; z-index:1; }
+    .avatar-frame img { display:block; width:100%; height:100%; object-fit:cover; border-radius:20px; transform:rotate(-4deg); }
+    .metrics { display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid var(--line); }
+    .metric { padding:30px 20px 29px; border-right:1px solid var(--line); }
+    .metric:first-child { padding-left:0; }
+    .metric:last-child { border:0; }
+    .metric b { display:block; font-size:31px; letter-spacing:-.04em; line-height:1; }
+    .metric span { display:block; font-size:12px; font-weight:700; color:var(--muted); margin-top:8px; }
+    section { padding:84px 0 0; }
+    .section-head { display:flex; align-items:end; justify-content:space-between; gap:30px; margin-bottom:30px; }
+    .section-num { font-size:12px; color:var(--warm-dark); font-weight:850; letter-spacing:.12em; }
+    h2 { font-size:clamp(27px,3.2vw,40px); letter-spacing:-.045em; margin:6px 0 0; line-height:1.2; }
+    .section-head p { color:var(--muted); margin:0; font-size:14px; max-width:450px; }
+    .flow { display:grid; grid-template-columns:repeat(5,minmax(0,1fr) 20px) minmax(0,1fr); align-items:stretch; gap:7px; }
+    .flow-step { background:#FFF; border:1px solid var(--line); border-radius:16px; padding:20px 16px; min-height:134px; }
+    .flow-step strong { display:block; font-size:16px; line-height:1.3; }
+    .flow-step small { display:block; color:var(--muted); font-size:12px; margin-top:9px; }
+    .flow-step em { display:block; font-style:normal; font-size:11px; color:var(--warm-dark); font-weight:800; margin-bottom:9px; }
+    .flow-arrow { align-self:center; color:var(--warm-dark); font-size:24px; font-weight:700; text-align:center; }
+    .flow-step.final { background:var(--warm); border-color:var(--warm); }
+    .flow-step.final small,.flow-step.final em { color:#4D3221; }
+    .diagram-caption { display:flex; justify-content:space-between; gap:15px; color:var(--muted); font-size:12px; border-top:1px solid var(--line); padding-top:14px; margin-top:19px; }
+    .source-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+    .source-card { background:var(--white); border:1px solid var(--line); border-radius:20px; padding:25px 25px 23px; }
+    .source-card .tag { color:var(--warm-dark); font-size:11px; letter-spacing:.12em; font-weight:850; }
+    .source-card h3 { font-size:19px; margin:11px 0 12px; }
+    .source-card p { color:var(--muted); margin:0; font-size:14px; min-height:66px; }
+    .source-card .examples { border-top:1px solid var(--line); padding-top:15px; margin-top:18px; font-size:12px; color:var(--ink); }
+    .merge-band { margin:15px 0 0; background:var(--ink); color:var(--paper); border-radius:15px; padding:17px 24px; text-align:center; font-weight:750; letter-spacing:.015em; }
+    .merge-band span { color:var(--warm); }
+    .gate-layout { display:grid; grid-template-columns:1.3fr .7fr; gap:18px; }
+    .gate-stack { display:grid; gap:11px; }
+    .gate { display:grid; grid-template-columns:42px 166px minmax(0,1fr); align-items:center; gap:13px; background:var(--white); border:1px solid var(--line); border-radius:15px; padding:16px 20px; }
+    .gate .index { width:34px; height:34px; border-radius:11px; display:grid; place-items:center; background:var(--warm-light); color:var(--warm-dark); font-size:13px; font-weight:900; }
+    .gate strong { font-size:15px; }
+    .gate span { color:var(--muted); font-size:13px; }
+    .rule-card { border-radius:20px; background:var(--warm-light); padding:28px; display:flex; flex-direction:column; justify-content:center; }
+    .rule-card .symbol { font-size:33px; color:var(--warm-dark); line-height:1; }
+    .rule-card h3 { margin:19px 0 10px; font-size:19px; }
+    .rule-card p { margin:0; font-size:14px; }
+    .rule-card .fine { font-size:12px; color:#785A41; margin-top:14px; }
+    .score-panel { display:grid; grid-template-columns:1fr 52px 1fr; gap:14px; align-items:stretch; }
+    .score-box { background:var(--white); border:1px solid var(--line); border-radius:22px; padding:28px 30px 29px; }
+    .score-box.second { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+    .score-box .phase { font-size:12px; font-weight:850; letter-spacing:.1em; color:var(--warm-dark); }
+    .score-box.second .phase { color:var(--warm); }
+    .score-box h3 { font-size:23px; letter-spacing:-.03em; margin:8px 0 13px; }
+    .formula { font-size:18px; line-height:1.45; font-weight:800; letter-spacing:-.025em; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:16px 0; }
+    .score-box.second .formula { border-color:#515250; }
+    .score-box p { font-size:13px; color:var(--muted); margin:15px 0 0; }
+    .score-box.second p { color:#D0D0CB; }
+    .score-bridge { align-self:center; text-align:center; font-size:29px; color:var(--warm-dark); font-weight:800; }
+    .score-notes { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px; }
+    .score-note { border-top:2px solid var(--warm); padding:15px 6px 0 0; }
+    .score-note b { display:block; font-size:14px; }
+    .score-note span { display:block; margin-top:5px; color:var(--muted); font-size:12px; }
+    .publish { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    .publish-left,.publish-right { border:1px solid var(--line); border-radius:22px; background:#FFF; padding:29px; }
+    .publish h3 { font-size:20px; margin:0 0 21px; }
+    .mini-flow { display:flex; align-items:stretch; gap:8px; margin-bottom:19px; }
+    .mini-flow div { min-width:0; flex:1; padding:13px 11px; border-radius:10px; background:var(--soft); font-size:12px; font-weight:750; text-align:center; }
+    .mini-flow span { align-self:center; color:var(--warm-dark); font-size:17px; font-weight:850; }
+    .publish ul { list-style:none; padding:0; margin:0; display:grid; gap:11px; }
+    .publish li { position:relative; padding-left:16px; font-size:13px; color:var(--muted); }
+    .publish li::before { content:""; width:5px; height:5px; border-radius:50%; background:var(--warm); position:absolute; left:0; top:8px; }
+    .sample { background:var(--paper); border-left:3px solid var(--warm); padding:17px 19px; font-size:13px; }
+    .sample strong { display:block; margin-bottom:7px; }
+    .sample .stars { color:var(--warm-dark); font-weight:800; }
+    .sample .small { display:block; color:var(--muted); font-size:12px; margin-top:6px; }
+    .sample a { color:var(--warm-dark); text-decoration:underline; text-underline-offset:3px; }
+    .foot-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; padding-bottom:70px; }
+    .foot-item { border-top:1px solid var(--line); padding-top:16px; }
+    .foot-item b { font-size:14px; }
+    .foot-item p { color:var(--muted); font-size:12px; margin:6px 0 0; }
+    .footer { border-top:1px solid var(--line); color:var(--muted); font-size:12px; padding:22px 0 34px; display:flex; justify-content:space-between; gap:15px; }
+    @media (max-width:900px) {
+      .flow { grid-template-columns:1fr; }
+      .flow-arrow { transform:rotate(90deg); }
+      .flow-step { min-height:125px; }
+      .gate-layout { grid-template-columns:1fr; }
+      .rule-card { min-height:180px; }
+    }
+    @media (max-width:680px) {
+      .wrap { width:calc(100% - 30px); }
+      .topbar { padding:17px 0; }
+      nav { display:none; }
+      .hero { grid-template-columns:minmax(0,1fr); padding:32px 27px; border-radius:21px; gap:22px; overflow-wrap:anywhere; }
+      .hero p { font-size:15px; }
+      .avatar-frame { justify-self:start; width:130px; border-radius:20px; padding:9px; }
+      .avatar-frame img { border-radius:14px; }
+      .metrics { grid-template-columns:repeat(2,1fr); }
+      .metric { padding:20px 12px; }
+      .metric:nth-child(odd) { padding-left:0; }
+      .metric:nth-child(2) { border:0; }
+      .metric:nth-child(-n+2) { border-bottom:1px solid var(--line); }
+      section { padding-top:59px; }
+      .section-head { display:block; }
+      .section-head p { margin-top:12px; }
+      .flow { grid-template-columns:minmax(0,1fr); gap:7px; }
+      .flow-step { min-height:auto; min-width:0; padding:17px 20px; }
+      .flow-arrow { transform:rotate(90deg); font-size:20px; line-height:16px; }
+      .diagram-caption { display:grid; }
+      .source-grid,.score-notes,.publish,.foot-grid { grid-template-columns:1fr; }
+      .source-card p { min-height:0; }
+      .gate { grid-template-columns:35px 1fr; gap:5px 11px; }
+      .gate span { grid-column:2; }
+      .score-panel { grid-template-columns:1fr; gap:8px; }
+      .score-bridge { transform:rotate(90deg); line-height:20px; }
+      .score-box { padding:24px; }
+      .footer { display:block; }
+    }
+    @media print {
+      body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      .wrap { width:100%; }
+      nav { display:none; }
+      section { break-inside:avoid; padding-top:38px; }
+      .hero { padding:36px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap topbar">
+    <a class="wordmark" href="#top">Brainsong Today</a>
+    <nav aria-label="页面导航"><a href="#overview">总览</a><a href="#collect">采集</a><a href="#filter">筛选</a><a href="#ranking">排序</a><a href="#delivery">推送</a></nav>
+  </header>
+  <main id="top">
+    <div class="wrap">
+      <div class="hero">
+        <div><span class="eyebrow">How it works</span><h1>把信息噪声<br>变成<strong>每日重点</strong></h1><p>为消费级脑机／脑电、头戴式耳机及教育、睡眠、情绪应用而设计。从公开信源发现信息，经过日期、业务和来源验证，最后送达飞书群。</p></div>
+        <div class="avatar-frame"><img src="assets/brainsong-today-bot-avatar.png" alt="Brainsong Today 小助手头像"></div>
+      </div>
+      <div class="metrics" aria-label="当前运行参数"><div class="metric"><b>3 天</b><span>正式简报的内容窗口</span></div><div class="metric"><b>7 条</b><span>每次最多推送</span></div><div class="metric"><b>2 轮</b><span>入围与推荐排序</span></div><div class="metric"><b>1 次</b><span>同一天成功发送上限</span></div></div>
+    </div>
+
+    <section class="wrap" id="overview">
+      <div class="section-head"><div><span class="section-num">01 / TOTAL PIPELINE</span><h2>一条资讯如何抵达群里</h2></div><p>前面广泛找，后面逐层收紧；任一环节证据不足，都不为了凑满七条强行发送。</p></div>
+      <div class="flow" role="img" aria-label="六步流程：公开信源与联网搜索，保存候选，日期和业务初筛，AI 相关性评估，两轮排序及摘要，飞书群推送">
+        <div class="flow-step"><em>01 / FIND</em><strong>发现信息</strong><small>定向网站 + 官方联网搜索</small></div><span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-step"><em>02 / STORE</em><strong>保存候选</strong><small>原始标题、摘要、链接进入 SQLite</small></div><span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-step"><em>03 / VERIFY</em><strong>核日期与去重</strong><small>只处理合规的近期事件</small></div><span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-step"><em>04 / ASSESS</em><strong>判断业务相关</strong><small>规则初筛 + GLM 评分</small></div><span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-step"><em>05 / RANK</em><strong>两轮排序</strong><small>先时效，后来源权威性</small></div><span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-step final"><em>06 / SEND</em><strong>推送飞书</strong><small>最多 7 条，附原文入口</small></div>
+      </div>
+      <div class="diagram-caption"><span>运行载体：GitHub Actions</span><span>搜索与分析：智谱官方 API · GLM-5.3-Flash</span><span>历史状态：轻量 SQLite</span></div>
+    </section>
+
+    <section class="wrap" id="collect">
+      <div class="section-head"><div><span class="section-num">02 / ACQUISITION</span><h2>三条发现路径，同一套候选池</h2></div><p>优先读指定网站，联网搜索补足小公司和未被固定信源覆盖的消息。</p></div>
+      <div class="source-grid">
+        <div class="source-card"><span class="tag">DIRECT SOURCES</span><h3>定向信源</h3><p>读取 RSS／Atom、公开网页列表、政府数据接口；政策站点优先启动。</p><div class="examples">中国政府网、教育部、BCIwiki、证券时报、IT之家、企业官网、arXiv</div></div>
+        <div class="source-card"><span class="tag">TARGETED SEARCH</span><h3>站点内搜索</h3><p>对难以直接解析的站点，用官网域名限制智谱联网搜索；单轮最多 3 个站点查询。</p><div class="examples">科技日报、科普中国、DeepTech、36氪、国家药监局等候选站点</div></div>
+        <div class="source-card"><span class="tag">OPEN-WEB DISCOVERY</span><h3>全网补充</h3><p>每个方向取高权重概念组成短查询；每日轮换一条探索词，寻找新公司与邻近应用。</p><div class="examples">行业、资本、政策等分类检索；探索目标占比 10%，仍须过相关性门槛</div></div>
+      </div>
+      <div class="merge-band">三路结果 <span>↓</span> 统一候选池：保留原始证据、来源和链接，再进行合并去重</div>
+    </section>
+
+    <section class="wrap" id="filter">
+      <div class="section-head"><div><span class="section-num">03 / EVIDENCE GATES</span><h2>日期和相关性，先于付费分析</h2></div><p>搜索接口先收“近一周”结果，程序再核真实日期：正式版只看当天与前两天。</p></div>
+      <div class="gate-layout">
+        <div class="gate-stack">
+          <div class="gate"><div class="index">01</div><strong>日期核验</strong><span>有真实发布日期：须在近 3 个自然日。arXiv 只认 Atom 论文版本日期。</span></div>
+          <div class="gate"><div class="index">02</div><strong>无日期例外</strong><span>仅指定行业／资本站点的首次发现文章，打开原文仍无日期时标“近期”。</span></div>
+          <div class="gate"><div class="index">03</div><strong>去噪与去重</strong><span>剔除词典、招聘、股吧等；规范 URL 和标题，同一事件合并多来源。</span></div>
+          <div class="gate"><div class="index">04</div><strong>业务门槛</strong><span>需要脑机／脑电技术联系，或耳机 + 应用场景；泛教育与无关热点不进入 AI 队列。</span></div>
+          <div class="gate"><div class="index">05</div><strong>AI 复核</strong><span>GLM 判断相关性、分类、主体与来源性质；政策仅保留中国国内相关内容。</span></div>
+        </div>
+        <aside class="rule-card"><div class="symbol" aria-hidden="true">◇</div><h3>“近期” ≠ “今天发布”</h3><p>首次发现日期只用于内部时效判断，模型接收的“发布日期”仍为空；推送时写“近期”，不冒充发表日期。</p><div class="fine">若 AI 把这类无日期资讯改判为政策或学术，直接取消入选资格。</div></aside>
+      </div>
+    </section>
+
+    <section class="wrap" id="ranking">
+      <div class="section-head"><div><span class="section-num">04 / TWO-STAGE RANKING</span><h2>先看是否值得读，再看是否值得推</h2></div><p>同一个相关性判断参与两轮，但时效与来源权威性分别计算，不把两个加权反复叠乘。</p></div>
+      <div class="score-panel">
+        <div class="score-box"><span class="phase">ROUND 01 · 入围</span><h3>相关性 × 时效</h3><div class="formula">业务相关度 × 分类权重 × 时效系数</div><p>AI 给 0–100 分并明确是否接受；加权相关度至少 60。今天的内容时效系数 1.0，前一／前二天为 0.8。第一轮形成最多 10 条入围池。</p></div>
+        <div class="score-bridge" aria-hidden="true">→</div>
+        <div class="score-box second"><span class="phase">ROUND 02 · 推荐</span><h3>相关性 × 来源实力</h3><div class="formula">业务相关度 × 分类权重 × 来源系数</div><p>来源系数由权威性 70% + 知名度 30% 得出；优先核验原始公告、媒体原创与域名信誉。最终分数换算为 0–5 星、可带半星。</p></div>
+      </div>
+      <div class="score-notes">
+        <div class="score-note"><b>行业／资本／政策 × 1.2</b><span>初创公司优先关注直接业务和国内政策；学术 × 1.0。</span></div>
+        <div class="score-note"><b>AI 基础分析 36 条</b><span>按政策 → 行业 → 资本 → 学术分配机会；不足 7 条时继续处理剩余候选。</span></div>
+        <div class="score-note"><b>分布上限</b><span>每类最多 3 条，学术最多 2 条，同一企业最多 2 条；同一信源占分析名额 25% 为软上限。</span></div>
+      </div>
+    </section>
+
+    <section class="wrap" id="delivery">
+      <div class="section-head"><div><span class="section-num">05 / COMPOSITION & DELIVERY</span><h2>输出像一份编辑过的简报</h2></div><p>标题、事件主体、摘要和来源各司其职；每条都能直接回到原文。</p></div>
+      <div class="publish">
+        <div class="publish-left"><h3>信息如何写出来</h3><div class="mini-flow"><div>可用原摘要<br>直接使用</div><span>／</span><div>长正文无摘要<br>GLM 精炼</div><span>／</span><div>短文缺证据<br>补搜来源</div></div><ul><li>摘要单独控制在 100 字内；长标题单独压缩，不挤占摘要字数。</li><li>摘要尽可能以企业、机构或政策发布机关开头，不让媒体名替代事件主体。</li><li>来源相同事件先合并；多来源在同一条后并列呈现。</li></ul></div>
+        <div class="publish-right"><h3>飞书里看到的结构</h3><div class="sample"><strong>1. [行业] 某企业发布消费级脑电耳机</strong><span class="stars">推荐指数：★★★★☆</span><span class="small">近期 · 脑电耳机／睡眠 · 来源：企业官网</span><p>企业发布脑电耳机，提供睡眠场景下的信号采集与分析功能。</p><span style="color:var(--warm-dark);text-decoration:underline;text-underline-offset:3px">原文入口 ↗</span></div><ul style="margin-top:17px"><li>每次最多 7 条；合格内容不足就少发，没有内容不发空简报。</li><li>同日发送成功后上锁；发送状态不确定时停止重试，防止重复刷屏。</li></ul></div>
+      </div>
+    </section>
+
+    <section class="wrap">
+      <div class="section-head"><div><span class="section-num">06 / OPERATIONS</span><h2>每天自动跑，历史有记忆</h2></div><p>定时触发、状态保存和故障记录分开，避免一条失败记录混进正式简报。</p></div>
+      <div class="foot-grid">
+        <div class="foot-item"><b>触发</b><p>GitHub Actions 于北京时间 06:00–12:00 每 10 分钟设补偿触发；实际启动可能延迟，成功后当天不再采集和发送。</p></div>
+        <div class="foot-item"><b>记忆</b><p>SQLite 保存候选、已发送指纹、分析缓存和发送状态；跨天避免重发，过期候选清理，状态通过构建产物恢复。</p></div>
+        <div class="foot-item"><b>追溯</b><p>简报预览、信源日期统计、AI 调用记录和失败日志分别存放；密钥通过 GitHub Secrets 提供，不进入代码。</p></div>
+      </div>
+    </section>
+  </main>
+  <footer class="wrap footer"><span>Brainsong Today · 当前三日窗口版本</span><span>配置：brainsong.yaml · keywords.yaml · sources.yaml</span></footer>
+</body>
+</html>

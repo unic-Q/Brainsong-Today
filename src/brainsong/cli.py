@@ -31,7 +31,7 @@ def main():
         if args.prune_only:
             if args.send or args.offline or args.resume or args.cached_only:
                 parser.error("--prune-only 不能与采集、发送或离线选项组合")
-            cfg, _, _, _ = load(args.root)
+            cfg, _, _ = load(args.root)
             path = args.state or Path(args.root) / 'state/brainsong.sqlite3'
             state = State(path)
             try:

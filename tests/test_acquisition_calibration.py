@@ -16,7 +16,7 @@ def item(title, url='https://example.org/a', day='2026-09-20', summary=''):
 
 
 def test_business_gate_blocks_unrelated_despite_complete_evidence():
-    cfg,policy,_,_=load(ROOT)
+    cfg,policy,_=load(ROOT)
     for title in ('烟花爆竹全链条监管意见','通用机器人芯片公司融资10亿元','普通教育教学政策'):
         a=item(title,summary='完整材料，权威媒体发布，最新信息。')
         prepare(a,policy['rules'],policy['exclude'])
@@ -28,7 +28,7 @@ def test_business_gate_blocks_unrelated_despite_complete_evidence():
 
 
 def test_quality_and_authority_outrank_evidence_convenience():
-    cfg,_,_,_=load(ROOT)
+    cfg,_,_=load(ROOT)
     high=item('脑电行业标准','https://www.nmpa.gov.cn/a')
     low=item('脑电普通报道',summary='已经具备完整摘要内容，可以直接阅读。')
     assert direction_batch([low,high],[],cfg,lambda a:90 if a is high else 70,1)==[high]
@@ -36,7 +36,7 @@ def test_quality_and_authority_outrank_evidence_convenience():
 
 
 def test_today_gets_analysis_and_shortlist_before_older_items(tmp_path):
-    cfg,_,_,_=load(ROOT)
+    cfg,_,_=load(ROOT)
     new=item('脑电新进展')
     old=item('脑电旧进展','https://example.org/old','2026-09-19')
     assert direction_batch([old,new],[],cfg,lambda a:100 if a is old else 60,1)==[new]
@@ -50,7 +50,7 @@ def test_today_gets_analysis_and_shortlist_before_older_items(tmp_path):
 
 
 def test_calibration_examples_reach_model_and_change_cache_signature(tmp_path):
-    cfg,policy,_,_=load(ROOT)
+    cfg,policy,_=load(ROOT)
     assert [x['score'] for x in cfg['relevance_examples']]==[80,50,0,40,100,50,80,90,85,30,10,100,70]
     class AI:
         calls=0
@@ -71,7 +71,7 @@ def test_calibration_examples_reach_model_and_change_cache_signature(tmp_path):
 
 
 def test_paper_hint_and_noninvasive_financing_are_not_misclassified():
-    cfg,policy,_,_=load(ROOT)
+    cfg,policy,_=load(ROOT)
     a=item('单通道脑电解码研究，准确率提升')
     assert category_hint(a)=='学术'
     for title,expected in [('非侵入式脑电耳机公司融资5000万元',80),('植入式脑机公司融资5亿元',50)]:
@@ -80,7 +80,7 @@ def test_paper_hint_and_noninvasive_financing_are_not_misclassified():
 
 
 def test_emotion_recognition_is_positive_in_chinese_and_english():
-    cfg, policy, _, _ = load(ROOT)
+    cfg, policy, _ = load(ROOT)
     for title in ('脑电情绪识别模型发表论文', 'EEG emotion recognition model study'):
         paper = item(title)
         assert prepare(paper, policy['rules'], policy['exclude'])

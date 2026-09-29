@@ -45,7 +45,6 @@ shortlist_items: 10
 max_academic_items: 2
 max_category_items: 3
 max_company_items: 2
-max_events: 3
 max_analysis_candidates: 36
 max_source_share: 0.25
 max_metadata_reads: 12
