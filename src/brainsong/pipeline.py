@@ -52,6 +52,9 @@ def load(root):
             raise ValueError("规则表格式错误")
     if not 0 <= cfg["exploration_ratio"] <= .3 or not 1 <= cfg["max_items"] <= 7:
         raise ValueError("推送配置超出范围")
+    search_plan = cfg.get('search_plan', {})
+    if search_plan != {'fixed_per_topic': 4, 'rotating_per_topic': 1}:
+        raise ValueError('每个检索方向必须配置4个固定词和1个轮换词')
     if type(cfg.get("max_academic_items", 3)) is not int or not 0 <= cfg.get("max_academic_items", 3) <= 3:
         raise ValueError("学术条数必须为0至3")
     for key, maximum in [('max_category_items', 3), ('max_company_items', 2)]:
@@ -68,6 +71,12 @@ def load(root):
         raise ValueError('当前两轮方案入围池必须为10条')
     if cfg.get('policy_scope') != 'china':
         raise ValueError('政策范围必须限定为中国国内')
+    for topic in cfg['search_topics']:
+        if topic == '学术':
+            continue  # Academic entries come from arXiv Atom version dates.
+        if sum(topic in rule.get('topics', []) and rule.get('search_enabled', True)
+               for rule in rules['rules']) < 5:
+            raise ValueError('检索方向不足5个可用词: ' + topic)
     scoring = cfg.get('scoring', {})
     category_weights = scoring.get('category_weights', {})
     if set(category_weights) != {'行业', '资本', '政策', '学术'} or any(
@@ -87,22 +96,32 @@ def load(root):
 
 
 def queries(rules, cfg, today):
-    # Short, highest-priority query in every category; no long synonym bundles.
+    # Four highest-weight anchors per searchable direction, plus one daily rotation.
+    # The academic direction is collected through verified arXiv Atom records.
     result = []
-    for topic in cfg["search_topics"]:
-        rows = sorted([r for r in rules if topic in r.get("topics", []) and not r.get("exploration")],
-                      key=lambda r: -r["weight"])
-        if not rows:
+    fixed_count = cfg['search_plan']['fixed_per_topic']
+    for topic, intent in cfg["search_topics"].items():
+        if topic == '学术':
             continue
-        # One high-priority concept per category, not an AND-like pile of synonyms.
-        rule = rows[0]
-        words = " ".join(g[0] for g in rule["groups"])
-        intent = cfg["search_topics"][topic].split()[0]
-        result.append((topic, words[:50] + " " + intent))
-    explore = [r for r in rules if r.get("exploration")]
-    if explore and cfg["exploration_ratio"] > 0:
-        r = explore[today.toordinal() % len(explore)]
-        result.append(("探索", r.get("query", r["id"])))
+        rows = sorted([r for r in rules if topic in r.get("topics", []) and r.get('search_enabled', True)],
+                      key=lambda r: -r["weight"])
+        if len(rows) < fixed_count + 1:
+            raise ValueError('检索方向不足5个可用词: ' + topic)
+        rotating = rows[fixed_count:]
+        regular = [r for r in rotating if not r.get('exploration')]
+        exploratory = [r for r in rotating if r.get('exploration')]
+        if exploratory and cfg['exploration_ratio'] > 0 and today.toordinal() % 10 == 0:
+            chosen = exploratory[(today.toordinal() // 10) % len(exploratory)]
+        else:
+            pool = regular or exploratory
+            chosen = pool[today.toordinal() % len(pool)]
+        for rule in rows[:fixed_count] + [chosen]:
+            words = ' '.join(group[0] for group in rule['groups'][:2])
+            if len(rule['groups']) == 1 and topic in {'企业', '眼镜可穿戴'}:
+                words += ' ' + intent.split()[0]
+            if topic == '政策':
+                words += ' 中国'
+            result.append((topic, words[:55]))
     return result
 
 
@@ -497,15 +516,13 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         state.error(today, "Bing补搜:" + topic, exc)
                         source_stats.append(source_failure_report('bing:' + topic, 'failed', exc))
             if cfg["search_enabled"]:
+                search_results = {}
                 for topic, query in queries(rules, cfg, today):
-                    if topic == '学术':
-                        # arXiv's Atom version timestamps are the only accepted
-                        # academic dates; paid search snippets lack this evidence.
-                        continue
                     try:
-                        domain = "arxiv.org" if topic == "学术" else ""
-                        found = from_search(provider.search(query, domain, recency=cfg['search_recency']),
-                                            {"政策": "政策", "学术": "学术", "资本": "资本"}.get(topic, "行业"), domain)
+                        if query not in search_results:
+                            search_results[query] = provider.search(query, recency=cfg['search_recency'])
+                        found = from_search(search_results[query],
+                                            {"政策": "政策", "资本": "资本"}.get(topic, "行业"))
                         collected = fresh_collection(found, cfg, today)
                         state.retain_candidates(collected, today)
                         items.extend(collected)

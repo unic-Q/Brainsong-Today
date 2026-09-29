@@ -6,7 +6,10 @@ from .model import company_keys, source_factor
 
 CORE = re.compile(r'脑机|脑电|神经数据|神经接口|耳周|耳部电极|干电极|生物电|神经反馈|\b(?:eeg|bci|ecog)\b|electroencephal|brain.computer|brain.machine|neural (?:data|signal|interface)|ear.eeg|neurofeedback|dry electrode', re.I)
 AUDIO = re.compile(r'耳机|headphones?|headsets?|earbuds?', re.I)
-APPLICATION = re.compile(r'教育|课堂|教学|听觉训练|学习|睡眠|情绪|新品|发布|降噪|education|classroom|learning|sleep|emotion|launch|release|noise.cancel', re.I)
+GLASSES = re.compile(r'AI\s*眼镜|智能眼镜|脑电眼镜|眼电眼镜|\b(?:AI|smart|EEG|EOG)\s+glasses\b', re.I)
+WEARABLE = re.compile(r'AI可穿戴|智能可穿戴|\bAI\s+wearables?\b', re.I)
+BIOSIGNAL = re.compile(r'脑电|神经反馈|生理信号|生物电|认知|睡眠|情绪|\b(?:EEG|EOG|biosignal|neurofeedback)\b', re.I)
+APPLICATION = re.compile(r'教育|课堂|教学|听觉训练|学习|睡眠|情绪|新品|发布|降噪|眼动|眼控|交互|视障|无障碍|education|classroom|learning|sleep|emotion|launch|release|noise.cancel|eye.tracking|interaction', re.I)
 EVENT = re.compile(r'发布|新品|研发|融资|收购|并购|任命|聘|更新|研究|产品|平台|数据|设备|传感|launch|release|funding|rais|appoint|sdk|studio|update|data|sensor|research|product', re.I)
 
 
@@ -15,6 +18,10 @@ def business_context(item, cfg):
     if CORE.search(text):
         return True
     if AUDIO.search(text) and APPLICATION.search(text):
+        return True
+    if GLASSES.search(text) and (APPLICATION.search(text) or EVENT.search(text)):
+        return True
+    if WEARABLE.search(text) and BIOSIGNAL.search(text):
         return True
     if company_keys(item, cfg.get('scoring', {})) and EVENT.search(text):
         return True

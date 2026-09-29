@@ -51,7 +51,7 @@ def test_today_gets_analysis_and_shortlist_before_older_items(tmp_path):
 
 def test_calibration_examples_reach_model_and_change_cache_signature(tmp_path):
     cfg,policy,_=load(ROOT)
-    assert [x['score'] for x in cfg['relevance_examples']]==[80,50,0,40,100,50,80,90,85,30,10,100,70]
+    assert [x['score'] for x in cfg['relevance_examples']]==[80,50,0,40,100,50,80,90,85,30,10,100,70,95,70,0]
     class AI:
         calls=0
         def chat(self,task,payload):

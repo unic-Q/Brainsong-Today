@@ -6,6 +6,8 @@ profile: >-
   政策只关注中国国内的全国政策和省市地方政策，尤其神经数据、隐私、未成年人、教育硬件及相关监管；境外政策不入选。
   中国国内脑机接口专项产业扶持、落地补贴和产业基金也相关，不因地方政策而排除；不关注与脑机行业无关的普通注册补贴。
   医疗不是我们的主营用途，但共用脑电技术和适用监管可关注。探索内容必须有合理业务邻近性，不能用无关内容凑数。
+  AI眼镜、AI耳机等无脑电产品可作为消费电子形态和教育/睡眠/情绪应用的邻近观察对象，但不等同于脑电产品；
+  泛智能穿戴、普通手表戒指和单纯音质升级不能凭AI或可穿戴字样入选。
 relevance_examples:
   - {text: '非侵入式脑电耳机企业面向睡眠和专注力获得5000万元A轮融资', score: 80}
   - {text: '植入式脑机企业帮助瘫痪患者交流，获得5亿元融资', score: 50}
@@ -20,6 +22,9 @@ relevance_examples:
   - {text: '脑电认知负荷课堂90人应用试验，未公开代码', score: 10}
   - {text: '国家神经数据隐私与未成年人保护要求覆盖消费级脑电', score: 100}
   - {text: '省级脑机产业扶持，包含当地落地补贴、税惠和产业基金', score: 70}
+  - {text: '日常佩戴的脑电眼镜发布，开放脑电信号接口', score: 95}
+  - {text: 'AI眼镜发布教育场景中的听觉辅助功能，不采集脑电', score: 70}
+  - {text: '普通智能手表增加AI表盘，没有脑电或教育睡眠情绪应用', score: 0}
 acquisition:
   recency_first: true
   # Acquisition estimates only, never final relevance scores or hard rejection rules.
@@ -102,6 +107,7 @@ ai:
   batch_size: 3
   candidates: 36
 search_enabled: true
+search_plan: {fixed_per_topic: 4, rotating_per_topic: 1}
 supplement_queries:
   - [资本, '脑机接口 融资', '']
   - [行业, '脑电耳机 新品', '']
@@ -116,4 +122,5 @@ search_topics:
   企业: 新品 融资
   资本: 融资 并购
   政策: 政策 标准 监管
+  眼镜可穿戴: 产品 应用
   学术: 研究

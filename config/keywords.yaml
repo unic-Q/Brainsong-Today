@@ -39,6 +39,8 @@ rules:
   groups:
   - - 耳周脑电
     - ear-EEG
+    - 耳内脑电
+    - in-ear EEG
   purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
   topics:
   - 核心
@@ -50,6 +52,8 @@ rules:
   groups:
   - - 脑电耳机
     - EEG耳机
+    - 脑电耳塞
+    - EEG earbuds
   purpose: 消费级脑电产品研发与商业决策相关技术、场景或产业信息
   topics:
   - 核心
@@ -570,6 +574,7 @@ rules:
   query: FDA OR CE 神经数据
   exploration: false
   direct: false
+  search_enabled: false
 - id: r47-神经数据 (隐私
   weight: 55
   groups:
@@ -691,4 +696,237 @@ rules:
   - 核心
   query: 柔性生物传感 初创
   exploration: true
+  direct: false
+- id: r60-脑电眼镜
+  weight: 95
+  groups:
+  - - 脑电眼镜
+    - 脑波眼镜
+    - EEG glasses
+    - EEG smart glasses
+  purpose: 追踪将脑电采集集成到日常眼镜形态的产品与技术
+  topics: [眼镜可穿戴]
+  query: 脑电眼镜
+  exploration: false
+  direct: true
+- id: r61-脑电头带
+  weight: 90
+  groups:
+  - - 脑电头带
+    - 脑波头带
+    - EEG headband
+  purpose: 追踪轻量消费级脑电穿戴产品
+  topics: [眼镜可穿戴]
+  query: 脑电头带
+  exploration: false
+  direct: true
+- id: r62-脑电睡眠眼罩
+  weight: 85
+  groups:
+  - - 脑电睡眠眼罩
+    - 脑电眼罩
+    - EEG sleep mask
+    - EEG eye mask
+  purpose: 追踪睡眠场景中的轻量脑电采集产品
+  topics: [眼镜可穿戴]
+  query: 脑电睡眠眼罩
+  exploration: false
+  direct: true
+- id: r63-AI眼镜新品
+  weight: 82
+  groups:
+  - - AI眼镜
+    - AI 眼镜
+    - AI smart glasses
+    - 智能眼镜
+    - smart glasses
+  - - 发布
+    - 新品
+    - 上市
+    - 产品
+    - launch
+    - release
+  purpose: 关注与眼镜形态相关的消费电子产品进展；不推断其具有脑电功能
+  topics: [眼镜可穿戴]
+  query: AI眼镜 新品
+  exploration: false
+  direct: false
+- id: r64-AI眼镜场景
+  weight: 80
+  groups:
+  - - AI眼镜
+    - AI 眼镜
+    - AI smart glasses
+    - 智能眼镜
+    - smart glasses
+  - - 教育
+    - 学习
+    - 睡眠
+    - 情绪
+    - 专注
+    - 注意力
+    - 视障
+    - 无障碍
+    - 听觉训练
+  purpose: 关注眼镜与公司应用场景交叉的实际产品
+  topics: [眼镜可穿戴]
+  query: AI眼镜 教育 睡眠 情绪
+  exploration: false
+  direct: false
+- id: r65-眼电眼镜
+  weight: 75
+  groups:
+  - - 眼电眼镜
+    - EOG glasses
+    - electrooculography glasses
+  - - 眼动
+    - 眼控
+    - 交互
+    - eye tracking
+    - interaction
+  purpose: 关注眼镜形态的邻近生物电传感与交互技术
+  topics: [眼镜可穿戴]
+  query: EOG glasses eye tracking
+  exploration: false
+  direct: false
+- id: r66-AI耳机应用
+  weight: 75
+  groups:
+  - - AI耳机
+    - AI headphones
+    - AI earbuds
+    - 智能耳机
+  - - 教育
+    - 学习
+    - 睡眠
+    - 情绪
+    - 注意力
+    - 听觉训练
+    - 专注
+  purpose: 关注耳机与公司应用场景交叉的产品，不追普通音质升级
+  topics: [眼镜可穿戴, 耳机教育]
+  query: AI耳机 教育 睡眠 情绪
+  exploration: false
+  direct: false
+- id: r67-AI可穿戴生理信号
+  weight: 60
+  groups:
+  - - AI可穿戴
+    - AI wearable
+    - 智能可穿戴
+  - - 脑电
+    - 生理信号
+    - 神经反馈
+    - 认知
+    - 情绪
+    - 睡眠
+  purpose: 小比例探索邻近穿戴产品，泛手表或戒指新闻不直接入选
+  topics: [眼镜可穿戴]
+  query: AI可穿戴 生理信号
+  exploration: true
+  direct: false
+- id: r68-脑电可穿戴融资
+  weight: 78
+  groups:
+  - - 脑电可穿戴
+    - 神经可穿戴
+    - 脑电眼镜
+    - 脑电头带
+  - - 融资
+    - 投资
+    - 并购
+    - funding
+  purpose: 发现脑电穿戴领域的新公司和资本事件
+  topics: [资本]
+  query: 脑电可穿戴 融资
+  exploration: false
+  direct: true
+- id: r69-AI眼镜融资
+  weight: 72
+  groups:
+  - - AI眼镜
+    - AI 眼镜
+    - AI smart glasses
+  - - 融资
+    - 投资
+    - 并购
+    - funding
+  purpose: 观察相邻消费电子形态的资本和商业进展
+  topics: [资本]
+  query: AI眼镜 融资
+  exploration: false
+  direct: false
+- id: r70-国内脑机标准
+  weight: 85
+  groups:
+  - - 脑机接口
+    - 脑电
+  - - 标准
+    - 规范
+    - 监管
+    - 政策
+  purpose: 追踪国内脑机和脑电相关标准与监管文件
+  topics: [政策]
+  query: 脑机接口 标准
+  exploration: false
+  direct: true
+- id: r71-神经数据隐私
+  weight: 80
+  groups:
+  - - 脑电数据
+    - 神经数据
+    - 脑机接口
+  - - 隐私
+    - 数据安全
+    - 未成年人
+    - 伦理
+  purpose: 追踪国内神经数据和未成年人保护要求
+  topics: [政策]
+  query: 脑电数据 隐私
+  exploration: false
+  direct: true
+- id: r72-脑机产业扶持
+  weight: 75
+  groups:
+  - - 脑机接口
+    - 脑电
+  - - 产业政策
+    - 产业扶持
+    - 地方政策
+    - 产业基金
+    - 补贴
+  purpose: 追踪国内脑机产业扶持和落地政策
+  topics: [政策]
+  query: 脑机接口 产业政策
+  exploration: false
+  direct: true
+- id: r73-AI眼镜隐私监管
+  weight: 65
+  groups:
+  - - AI眼镜
+    - 智能眼镜
+    - AI可穿戴
+  - - 隐私
+    - 未成年人
+    - 数据安全
+    - 监管
+  purpose: 追踪国内相关消费可穿戴产品的数据合规要求
+  topics: [政策]
+  query: AI眼镜 隐私 监管
+  exploration: false
+  direct: false
+- id: r74-睡眠脑电融资
+  weight: 68
+  groups:
+  - - 睡眠脑电
+    - 脑电睡眠
+    - EEG sleep
+  - - 融资
+    - 投资
+    - 并购
+    - funding
+  purpose: 发现睡眠脑电应用方向的融资和新企业
+  topics: [资本]
+  query: 睡眠脑电 融资
+  exploration: false
   direct: false

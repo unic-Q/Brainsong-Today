@@ -27,7 +27,8 @@ def contains(text: str, term: str) -> bool:
         return False
     if re.search(r"[\u4e00-\u9fff]", term):
         return term in text
-    return f" {term} " in f" {text} " or term in text.split()
+    # Latin phrases can touch Chinese characters without a separating space.
+    return bool(re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", text))
 
 
 def match_rule(text: str, groups: list[list[str]]) -> bool:
