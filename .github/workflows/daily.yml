@@ -19,6 +19,10 @@ on:
         description: "复用已保存候选继续分析，不重抓信源或执行常规搜索；补正文仍可能联网及调用API"
         type: boolean
         default: false
+      prune_only:
+        description: "仅清理过期及无日期候选并保存状态；不搜索、不推送"
+        type: boolean
+        default: false
       reset_delivery_once:
         description: "仅正式群首发时勾选：备份并一次性重置旧发送历史，须同时启用发送"
         type: boolean
@@ -61,7 +65,7 @@ jobs:
           INITIALIZE_STATE: ${{ inputs.initialize_state }}
         run: uv run python tools/restore_state.py
       - name: One-time formal launch reset
-        if: github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once && inputs.rollback_test_run_id == ''
+        if: github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once && !inputs.prune_only && inputs.rollback_test_run_id == ''
         env:
           SEND_BRIEF: ${{ inputs.send }}
         run: uv run python tools/reset_delivery_once.py --confirm-official-launch
@@ -76,7 +80,7 @@ jobs:
         id: daily_guard
         if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == ''
         env:
-          DAILY_DELIVERY: ${{ github.event_name == 'schedule' || inputs.daily_delivery }}
+          DAILY_DELIVERY: ${{ (github.event_name == 'schedule' || inputs.daily_delivery) && !inputs.prune_only }}
         run: uv run python tools/daily_delivery_guard.py
       - name: Collect, select and deliver
         if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == '' && steps.daily_guard.outputs.should_run == 'true'
@@ -85,11 +89,16 @@ jobs:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           SEND_BRIEF: ${{ github.event_name == 'schedule' || inputs.send }}
           CACHED_ONLY: ${{ inputs.cached_only }}
-          DAILY_DELIVERY: ${{ github.event_name == 'schedule' || inputs.daily_delivery }}
+          PRUNE_ONLY: ${{ inputs.prune_only }}
+          DAILY_DELIVERY: ${{ (github.event_name == 'schedule' || inputs.daily_delivery) && !inputs.prune_only }}
           PYTHONUNBUFFERED: "1"
         shell: bash
         run: |
           args=()
+          if [ "$PRUNE_ONLY" = "true" ]; then
+            uv run brainsong-today --prune-only
+            exit 0
+          fi
           if [ "$SEND_BRIEF" = "true" ]; then args+=(--send); fi
           if [ "$CACHED_ONLY" = "true" ]; then args+=(--cached-only); fi
           uv run brainsong-today "${args[@]}"

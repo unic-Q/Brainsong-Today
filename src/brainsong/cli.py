@@ -5,7 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .pipeline import run
+from .pipeline import load, run
+from .state import State
 
 
 def main():
@@ -18,6 +19,7 @@ def main():
     parser.add_argument("--state")
     parser.add_argument("--resume", action="store_true", help="复用候选缓存，执行配置中的定向补搜，不重抓信源列表")
     parser.add_argument("--cached-only", action="store_true", help="只补分析缓存候选，不执行信源列表采集或常规搜索")
+    parser.add_argument("--prune-only", action="store_true", help="只清理过期及无日期候选，不搜索、不推送")
     args = parser.parse_args()
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     # Actions cancellation sends SIGINT then SIGTERM. Unwind the pipeline's
@@ -26,6 +28,22 @@ def main():
         raise SystemExit(130)
     previous = {sig: signal.signal(sig, cancelled) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
+        if args.prune_only:
+            if args.send or args.offline or args.resume or args.cached_only:
+                parser.error("--prune-only 不能与采集、发送或离线选项组合")
+            cfg, _, _, _ = load(args.root)
+            path = args.state or Path(args.root) / 'state/brainsong.sqlite3'
+            state = State(path)
+            try:
+                before = state.db.execute('SELECT count(*) FROM candidate_inputs').fetchone()[0]
+                state.prune(today, cfg['lookback_days'], drop_undated=True,
+                            use_first_reported=cfg.get('strict_event_freshness', False))
+                after = state.db.execute('SELECT count(*) FROM candidate_inputs').fetchone()[0]
+            finally:
+                state.close()
+            print(json.dumps({'prune_only': True, 'removed': before - after,
+                              'remaining': after}, ensure_ascii=False))
+            return
         result = run(args.root, today, offline=args.offline, no_ai=args.no_ai, send=args.send,
                      fixture=Path(args.root) / args.fixture, state_path=args.state, resume=args.resume, cached_only=args.cached_only)
         print(json.dumps(result, ensure_ascii=False))

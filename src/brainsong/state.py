@@ -212,13 +212,27 @@ class State:
         if self.progress:
             self.progress('error ' + stage.split(':', 1)[0] + ' ' + detail.split(' ', 1)[0])
 
-    def prune(self, today):
-        cutoff = (today-timedelta(days=30)).isoformat()
-        expired = [Article(**json.loads(payload)) for first_seen, payload in
+    def prune(self, today, candidate_days=30, *, drop_undated=False, use_first_reported=False):
+        """Discard stale candidate material without removing delivery fingerprints."""
+        def expired_candidate(item, first_seen=''):
+            if not item.published:
+                if drop_undated:
+                    return True
+                value = first_seen
+            else:
+                value = item.first_reported if use_first_reported and item.first_reported else item.published
+            try:
+                age = (today-date.fromisoformat(value[:10])).days
+            except ValueError:
+                return True
+            return not 0 <= age < candidate_days
+
+        expired = [item for first_seen, payload in
                    self.db.execute('SELECT first_seen,payload FROM candidate_inputs')
-                   if (json.loads(payload).get('published') or first_seen)[:10] <= cutoff]
-        expired.extend(Article(**json.loads(payload)) for (payload,) in self.db.execute(
-            "SELECT payload FROM articles WHERE published!='' AND substr(published,1,10)<=?", (cutoff,)))
+                   if expired_candidate(item := Article(**json.loads(payload)), first_seen)]
+        expired.extend(item for (payload,) in self.db.execute('SELECT payload FROM articles')
+                       if (item := Article(**json.loads(payload))).published or drop_undated
+                       if expired_candidate(item))
         self.delete_candidates(expired)
         self.db.execute("DELETE FROM errors WHERE day<?", ((today-timedelta(days=90)).isoformat(),))
         self.db.execute("DELETE FROM delivered WHERE day<? AND status!='pending'", ((today-timedelta(days=365)).isoformat(),))

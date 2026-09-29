@@ -12,4 +12,4 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       - run: uv sync --frozen --extra dev
-      - run: uv run pytest -q --ignore=tests/test_web.py
+      - run: uv run pytest -q
