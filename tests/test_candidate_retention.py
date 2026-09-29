@@ -54,6 +54,63 @@ def test_undated_and_policy_candidates_expire_but_delivery_history_remains(tmp_p
     state.close()
 
 
+def test_three_day_prune_removes_old_and_undated_copies_before_next_run(tmp_path):
+    state = State(tmp_path / 'three-day.db')
+    today = date(2026, 9, 29)
+    current = Article('今日脑电耳机发布', 'https://example.org/current', '2026-09-29', '媒体')
+    boundary = Article('前天脑电政策', 'https://example.org/boundary', '2026-09-27', '政府', category='政策')
+    old = Article('三天前脑电新闻', 'https://example.org/old', '2026-09-26', '媒体')
+    undated = Article('未注明日期的脑电新闻', 'https://example.org/undated', '', '媒体')
+    state.retain_candidates([current, boundary, old, undated], today)
+    for item in (current, boundary, old, undated):
+        state.save(item)
+    state.mark([old], today, 'sent')
+
+    state.prune(today, 3, drop_undated=True, use_first_reported=True)
+
+    assert {item.identity for item in state.candidates()} == {current.identity, boundary.identity}
+    assert state.deleted(old) and state.deleted(undated)
+    assert state.sent(old)
+    assert state.cached(old) is None and state.cached(undated) is None
+    state.close()
+
+
+def test_three_day_prune_uses_first_reported_for_strict_freshness(tmp_path):
+    state = State(tmp_path / 'first-reported.db')
+    today = date(2026, 9, 29)
+    repeated = Article('旧闻重新刊载', 'https://example.org/reprint', '2026-09-29', '媒体',
+                       first_reported='2026-09-24')
+    state.retain_candidates([repeated], today)
+    state.prune(today, 3, drop_undated=True, use_first_reported=True)
+    assert state.deleted(repeated) and not state.candidates()
+    state.close()
+
+
+def test_prune_only_cli_does_not_collect_or_send(tmp_path, monkeypatch, capsys):
+    import sys
+    from datetime import datetime
+    from pathlib import Path
+    from zoneinfo import ZoneInfo
+    from brainsong import cli
+
+    today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
+    db = tmp_path / 'maintenance.db'
+    state = State(db)
+    undated = Article('无日期脑电候选', 'https://example.org/no-date', '', '媒体')
+    state.retain_candidates([undated], today)
+    state.close()
+    monkeypatch.setattr(cli, 'run', lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError('maintenance must not collect or send')))
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(sys, 'argv', ['brainsong-today', '--root', str(root),
+                                      '--state', str(db), '--prune-only'])
+    cli.main()
+    assert '"removed": 1' in capsys.readouterr().out
+    state = State(db)
+    assert not state.candidates() and state.deleted(undated)
+    state.close()
+
+
 def test_checkpoint_survives_restart_and_missing_date(tmp_path):
     path = tmp_path / 'test.db'
     state = State(path)

@@ -1,99 +1,57 @@
-# Brainsong Today 定制版
+# Brainsong Today
 
-使用新版请先阅读 [Brainsong Today 使用说明](使用说明-Brainsong%20Today.md)。
-新版入口：`uv run brainsong-today --offline`（无网络、无模型费用的样例预览）。
-真实采集：`uv run brainsong-today`（官方智谱搜索及AI会计费，默认不发飞书）。
-以下保留上游项目说明和署名，不是本定制版的运行入口。
+面向消费级脑机／脑电、耳机和教育应用的每日资讯简报。程序从公开信源及智谱官方联网搜索获取候选，核对日期和业务相关性，生成附原文链接的短简报，并可发送至飞书群。
 
-<h1 align="center"> Omni Info Radar（⚠️ Alpha 内测版） </h1>
+本仓库基于 [Omni Info Radar](https://github.com/datawhalechina/omni-info-radar) 定制；原项目版权与 MIT 许可见 [LICENSE](LICENSE)。桌面版 Brainsong Today 与本仓库的云端简报程序是两套不同的入口。
 
-> [!CAUTION]
-> ⚠️ Alpha 内测版本警告：此为早期构建版本，功能仍在持续完善，可能存在错误或不兼容变更，欢迎通过 Issue 反馈问题或建议。
->
-> 内测链接：🔗https://omni-info-radar.fun-mesa-3136.chatgpt.site
->
-> 公众号AK获取链接：🔗https://down.mptext.top/dashboard/api
+## 当前推送规则
 
-Omni Info Radar 是一个个性化技术情报雷达。它从微信公众号、GitHub、科技新闻、大厂博客、学术论文、产品更新和安全资讯等公开来源收集候选内容，再根据关注词进行去噪与排序，生成每日精选报告。
+- 正式简报每天最多 7 条；每方向最多 3 条，学术最多 2 条，同一企业最多 2 条。不足时少发，不用无关内容凑数。
+- 正式候选只接受最近 3 个自然日内有可靠发布日期的内容。旧候选和无日期副本从候选库清除，已发送指纹保留用于跨天去重。
+- 付费分析前先做关键词、业务场景和日期初筛；同一信源占基础分析名额超过 25% 后暂缓，优先检查其他信源。该限制是软上限：其他信源不足时仍可继续检查。
+- 先按相关性和时效选候选，再按相关性与来源权威性排序。基础分析名额为 36 条；若还不足 7 条，就继续检查未处理的有日期候选，直到选满或可检查候选用尽。
+- 政策仅关注中国国内相关政策。展会日程独立于 7 条资讯，须核实后才展示。
+- 没有合格内容时不发送空简报；失败和采集问题写入 `logs/`，不会伪装成发送成功。
 
-- 支持 GitHub、微信公众号、新闻、博客、论文、产品更新和安全资讯 7 个频道。
-- 支持通过关键词筛选，并可选使用 OpenAI Chat Completions 兼容接口增强分析。
-- 未配置 AI API Key 时，自动使用本地规则完成摘要和排序。
-- 支持生成 Markdown、HTML 和 JSON 报告。
-- 支持推送到飞书、企业微信、个人微信、QQ 和邮箱。
-- 提供命令行工具和 Web Beta 页面。
+搜索接口的时间档位是“近一周”，程序再用文章发布日期做近 3 天的严格筛选；搜索结果缺日期不会被当作当天新闻。
 
-<p align="center">
-</p>
+## 本地运行
 
-## 项目受众
-
-- 📈 **创业者｜抢先捕捉产业风向**：每日追踪 AI 热点、产品动态与行业近况，从海量资讯中快速发现值得关注的技术信号和潜在机会。
-- 💻 **技术开发者｜高效掌握前沿技术**：聚合 GitHub Trending、大厂技术博客、安全资讯与热门项目，减少信息检索时间，及时跟进技术生态变化。
-- 🎓 **在读学生｜持续获取论文灵感**：精选 arXiv 论文、研究进展与高质量技术内容，为课程学习、科研选题和论文阅读提供线索。
-- 🧭 **产品经理｜洞察产品与市场趋势**：集中了解主流 AI 产品更新、开源项目和用户关注方向，为产品规划与创新决策提供参考。
-- 🧠 **技术团队｜打造专属情报雷达**：通过关注词过滤噪声，并将每日简报推送至飞书、企业微信、微信或 QQ，让关键信息主动抵达。
-
-## 快速开始：
+需要 Python 3.12 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-git clone https://github.com/datawhalechina/omni-info-radar.git
-cd omni-info-radar
-uv sync
-uv run repo-courier --channels all --dry-run
+uv sync --frozen
+uv run brainsong-today --offline   # 无网络、无模型费用的样例
+uv run brainsong-today             # 真实采集并生成预览，不发飞书
+uv run brainsong-today --send      # 明确发送到飞书
 ```
-> 本地运行需要 Python 3.10+；使用 AI 增强、微信公众号或消息推送功能时，需要自行配置对应服务的凭证。
 
-## 部署与定时运行
+真实采集和摘要使用官方智谱接口，可能产生费用。设置环境变量 `ZHIPU_API_KEY`；发送时还需 `FEISHU_WEBHOOK`。密钥和 Webhook 不要写进代码、日志或提交到 Git。
 
-本地、Docker 和 GitHub Actions 都可以运行项目；详细命令、凭证配置和报告保存方式见 [部署说明](docs/deployment.md)。
+主要配置位于 [`config/brainsong.yaml`](config/brainsong.yaml)、[`config/keywords.yaml`](config/keywords.yaml)、[`config/sources.yaml`](config/sources.yaml) 和 [`config/events.json`](config/events.json)。详细设置与运行方式见 [使用说明](使用说明-Brainsong%20Today.md)。
 
-| 方式 | 适合场景 | 运行特点 |
-| ---- | -------- | -------- |
-| 本地 | 首次体验、调试配置 | 用 `uv` 直接运行，报告写入本机 `reports/` 与 `data/` |
-| Docker | 已有容器环境 | 单次执行；通过挂载目录保存报告和历史数据 |
-| GitHub Actions | 每天定时推送 | 默认北京时间 09:00 运行；报告不会自动长期保存 |
+## GitHub Actions
 
-## 在线阅读
+工作流见 [`.github/workflows/daily.yml`](.github/workflows/daily.yml)。在仓库的 **Settings → Secrets and variables → Actions** 中设置：
 
-🚧 **建设中**
+| 类型 | 名称 | 用途 |
+| :-- | :-- | :-- |
+| Secret | `ZHIPU_API_KEY` | 智谱官方搜索与 AI 分析 |
+| Secret | `FEISHU_WEBHOOK` | 飞书群自定义机器人地址 |
+| Variable | `BRAINSONG_FORMAL_READY=true` | 开启正式定时任务 |
+
+工作流在北京时间早上 6:00—12:00 的时段尝试运行；GitHub 实际启动时间可能延后。同一天成功发送一次后，后续补偿运行会跳过。可以在 Actions 页面手动运行并选择仅预览或发送。历史候选、已发送记录、报告与故障日志通过 Actions artifacts 保存；公开仓库的构建产物也可能被他人访问，不要在其中存放敏感资料。
+
+需要立即清理已有云端候选时，手动运行工作流并只勾选 `prune_only`；它会保存清理后的状态，不会搜索或发送，也不会重置已发送历史。
 
 ## 目录
 
-| 模块 | 简介 | 状态 |
-| ---- | ---- | ---- |
-| [情报采集](src/repo_courier) | 聚合 GitHub Trending、微信公众号以及 RSS / Atom 信息源 | ✅ |
-| [个性化分析](src/repo_courier/personalize.py) | 按关注词筛选、去噪和排序，并支持可选的 AI 增强分析 | ✅ |
-| [报告生成](src/repo_courier/report.py) | 生成 Markdown、HTML 和 JSON 格式的每日简报 | ✅ |
-| [消息推送](src/repo_courier/pushers) | 支持飞书、企业微信、Server酱、OneBot 和 SMTP 邮箱 | ✅ |
-| [Web Beta](src/repo_courier/web.py) | 提供多频道选择、流式展示和自定义模型配置页面 | 🧪 |
-| [自动化任务](.github/workflows/daily.yml) | 通过 GitHub Actions 定时生成并推送报告 | ✅ |
-| [配置文件](config/config.yaml) | 管理关注方向、频道开关和 RSS / Atom 信息源 | ✅ |
-| [测试](tests) | 覆盖配置、采集、摘要、报告、推送与 Web 等核心能力 | ✅ |
+| 路径 | 内容 |
+| :-- | :-- |
+| `src/brainsong/` | 云端采集、候选筛选、排序、摘要和飞书推送 |
+| `config/` | 权重、关键词、信源及展会配置 |
+| `tests/` | 离线回归测试 |
+| `.github/workflows/daily.yml` | 定时任务与手动运行入口 |
+| `src/repo_courier/` | 上游 Omni Info Radar 的模块及复用组件 |
 
-## 贡献者名单
-
-| 姓名 | 职责 | 简介 |
-| :---- | :---- | :---- |
-| Hanchen Qiu | 项目负责人，核心贡献者 | [在读SE的🏓选手](https://github.com/JOJOCrazy123) |
-| Zihan Wu | 项目负责人，核心贡献者 | [阿里云开发人员](https://github.com/2132wzh) |
-| Sizhou Chen | 项目负责人，核心贡献者 | [Datawhale 核心成员](https://github.com/jjyaoao) |
-
-## 参与贡献
-
-- 如果你发现了一些问题，可以提交 Issue 进行反馈；如果长时间没有回复，可以联系 [Datawhale 保姆团队](https://github.com/datawhalechina/DOPMC/blob/main/OP.md)协助跟进。
-- 如果你想参与贡献本项目，可以提交 Pull Request；提交代码前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
-- 如果你对 Datawhale 感兴趣并希望发起新的开源项目，请参考 [Datawhale 开源项目指南](https://github.com/datawhalechina/DOPMC/blob/main/GUIDE.md)。
-- 请勿将 Token、API Key、Webhook 或 SendKey 提交到 Git。
-
-## 关注我们
-
-<div align="center">
-  <p>扫描下方二维码，关注公众号：Datawhale</p>
-  <img src="https://raw.githubusercontent.com/datawhalechina/pumpkin-book/master/res/qrcode.jpeg" alt="Datawhale 公众号二维码" width="180" height="180">
-</div>
-
-## LICENSE
-
-<a rel="license" href="LICENSE"><img alt="MIT License" style="border-width:0" src="https://img.shields.io/badge/license-MIT-green.svg"></a><br>
-本项目采用 <a rel="license" href="LICENSE">MIT License</a> 进行许可。
+修改请通过 Pull Request 提交；`main` 已设置分支保护。运行前可执行 `uv run pytest -q`。

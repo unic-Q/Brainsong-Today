@@ -110,10 +110,12 @@ def test_precise_test_delivery_rollback_keeps_prior_history_and_candidates(tmp_p
 
 def test_schedule_is_gated_and_reset_never_scheduled():
     workflow=(ROOT/'.github/workflows/daily.yml').read_text(encoding='utf-8')
-    assert '25-55/10 0 * * *' in workflow and '5-55/10 1-3 * * *' in workflow
+    assert '*/10 22-23,0-3 * * *' in workflow and '0 4 * * *' in workflow
     assert "vars.BRAINSONG_FORMAL_READY == 'true'" in workflow
     assert "github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once" in workflow
     assert "steps.daily_guard.outputs.should_run == 'true'" in workflow
+    assert 'uv run brainsong-today --prune-only' in workflow
+    assert 'inputs.reset_delivery_once && !inputs.prune_only' in workflow
 
 
 def test_three_day_profile_is_active_and_reversible():

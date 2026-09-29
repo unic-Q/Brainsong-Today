@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from math import ceil
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -174,10 +175,15 @@ def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
 
 
 def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploration_due=False,
-                    analysis_counts=None, replacement_counts=None):
+                    analysis_counts=None, replacement_counts=None, source_counts=None):
     """Recent business-relevant evidence first; convenience cannot outrank value."""
     analysis_counts = analysis_counts if analysis_counts is not None else Counter()
     replacement_counts = replacement_counts if replacement_counts is not None else Counter()
+    source_counts = source_counts if source_counts is not None else Counter()
+    source_limit = max(2, ceil(cfg.get('max_analysis_candidates', 36) * cfg.get('max_source_share', .25)))
+    def source_key(a):
+        host = (urlsplit(a.url).hostname or '').lower()
+        return host.removeprefix('www.').removeprefix('m.') or a.source.casefold()
     direction_priority = {'政策': 0, '行业': 1, '资本': 2, '学术': 3, '展会': 4}
     def needs_read(a):
         return not a.published or (not usable_summary(a.summary, a.title) and not a.body)
@@ -208,9 +214,11 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
             evidence_level = 2 if not a.published else 1 if needs_read(a) else 0
             representation = sum(p.category == a.category for p in picks + result)
             recent = date_priority(a) if cfg.get('acquisition', {}).get('recency_first') else 0
+            source_over_limit = source_counts[source_key(a)] + sum(
+                source_key(x) == source_key(a) for x in result) >= source_limit
             # Analyze plausible candidates in priority order, cycling across
             # directions before allowing one rich source pool to fill the budget.
-            return (full(a), not (a.exploration and exploration_due),
+            return (full(a), source_over_limit, not (a.exploration and exploration_due),
                     estimated_relevance(a, cfg) < 60,
                     analysis_counts[a.category] + sum(x.category == a.category for x in result),
                     direction_priority.get(a.category, 5),
@@ -221,6 +229,7 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
         result.append(chosen)
     for item in result:
         analysis_counts[item.category] += 1
+        source_counts[source_key(item)] += 1
         if full(item):
             replacement_counts[item.category] += 1
     return result
@@ -261,10 +270,16 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     accepted, picks, rejected = [], [], set()
     batch_size = min(6, max(1, cfg['ai']['batch_size']))
     cursor = analysed = extra_batches = metadata_reads = 0
-    analysis_counts, replacement_counts = Counter(), Counter()
+    analysis_counts, replacement_counts, source_counts = Counter(), Counter(), Counter()
     remaining = list(queue)
     budget = cfg.get('max_analysis_candidates', 36)
-    while remaining and analysed < budget:
+    refill_logged = False
+    while remaining:
+        if analysed >= budget and len(picks) < cfg['max_items'] and not refill_logged:
+            progress('analysis refill', ready=len(picks), deferred=len(remaining))
+            refill_logged = True
+        if analysed >= budget and len(picks) >= cfg['max_items']:
+            break
         qualified = [a for a in accepted if a.identity not in rejected]
         have_ten = len(qualified) >= cfg.get('shortlist_items', 10)
         if len(picks) >= cfg['max_items'] and have_ten:
@@ -277,10 +292,11 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             available = promising
         else:
             available = remaining
-        raw = direction_batch(available, picks, cfg, estimate, min(batch_size, budget-analysed),
+        raw = direction_batch(available, picks, cfg, estimate, batch_size,
                               can_read=offline or metadata_reads < cfg.get('max_metadata_reads', 12),
                               exploration_due=allowance > 0 and not any(a.exploration for a in picks),
-                              analysis_counts=analysis_counts, replacement_counts=replacement_counts)
+                              analysis_counts=analysis_counts, replacement_counts=replacement_counts,
+                              source_counts=source_counts)
         if not raw:
             progress('no eligible refill within evidence and quota limits', ready=len(picks))
             break
@@ -377,6 +393,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
     source_stats = []
     date_checks = []
     try:
+        state.prune(today, cfg['lookback_days'], drop_undated=True,
+                    use_first_reported=cfg.get('strict_event_freshness', False))
         if not offline and not provider.key and (cfg["ai"]["enabled"] or cfg["search_enabled"]):
             raise ValueError("未配置智谱官方密钥；请设置ZHIPU_API_KEY或迁移本机密钥")
         if offline:
@@ -521,7 +539,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                 else:
                     state.error(today, "飞书发送", "failed_or_uncertain_requires_review")
                     raise RuntimeError("飞书发送失败或状态未知，详见本地记录")
-        state.prune(today)
+        state.prune(today, cfg['lookback_days'], drop_undated=True,
+                    use_first_reported=cfg.get('strict_event_freshness', False))
         logs = root / "logs"
         logs.mkdir(exist_ok=True)
         for observation in reader.observations:

@@ -69,6 +69,8 @@ def test_many_unknown_dates_cannot_starve_ready_news(tmp_path, monkeypatch):
     assert len(picks) == 7
     assert set(assessed).issubset({a.identity for a in ready})
     assert len(state.candidates()) == 69
+    state.prune(DAY, 3, drop_undated=True)
+    assert {a.identity for a in state.candidates()} == {a.identity for a in ready}
     state.close()
 
 
@@ -100,6 +102,20 @@ def test_analysis_slots_follow_direction_priority_within_each_round():
             for i in range(2) for category in order]
     batch = pipeline.direction_batch(rows, [], {}, lambda a: 80, len(rows))
     assert [item.category for item in batch] == order * 2
+
+
+def test_single_source_is_deprioritized_before_paid_analysis():
+    rows = [Article(f'脑电新品A{i}', f'https://alpha.example.org/{i}', str(DAY), '甲媒体',
+                    '脑电耳机新品发布。', category='行业') for i in range(8)]
+    rows += [Article(f'脑电新品B{i}', f'https://beta.example.org/{i}', str(DAY), '乙媒体',
+                     '脑电耳机新品发布。', category='行业') for i in range(2)]
+    source_counts = Counter()
+    chosen = pipeline.direction_batch(rows, [],
+        {'max_analysis_candidates': 8, 'max_source_share': .25},
+        lambda a: 100 if 'alpha' in a.url else 50, 4, source_counts=source_counts)
+    assert sum('alpha' in a.url for a in chosen) == 2
+    assert sum('beta' in a.url for a in chosen) == 2
+    assert sum(source_counts.values()) == 4
 
 
 def test_full_direction_gets_only_one_clear_replacement_check():
@@ -153,7 +169,9 @@ def test_expired_articles_never_fetch_or_score(tmp_path, monkeypatch):
     state, assessed, _, picks = run_batch(tmp_path, monkeypatch, [old] + [make_item(i) for i in range(12)])
     assert old.identity not in assessed
     assert len(picks) == 7
-    assert old.identity in {a.identity for a in state.candidates()}
+    state.prune(DAY, 3, drop_undated=True)
+    assert old.identity not in {a.identity for a in state.candidates()}
+    assert state.deleted(old)
     state.close()
 
 
@@ -161,6 +179,31 @@ def test_failed_summary_refills_instead_of_stopping(tmp_path, monkeypatch):
     state, _, _, picks = run_batch(tmp_path, monkeypatch, [make_item(i) for i in range(15)], True)
     assert len(picks) == 7
     assert all(not a.url.endswith('/0') for a in picks)
+    state.close()
+
+
+def test_analysis_continues_past_initial_budget_when_fewer_than_seven_selected(tmp_path, monkeypatch):
+    cfg, policy, _, _ = pipeline.load(ROOT)
+    cfg['max_analysis_candidates'] = 3
+    state = State(tmp_path / 'refill.db')
+    rows = [make_item(i) for i in range(15)]
+    assessed = []
+    def assess(batch, *args):
+        result = []
+        for item in batch:
+            item.accepted = len(assessed) >= 3
+            assessed.append(item.identity)
+            if item.accepted:
+                result.append(item)
+        return result
+    monkeypatch.setattr(pipeline, 'relevance_filter', assess)
+    monkeypatch.setattr(pipeline, 'merge_event_reports', lambda items, *args: items)
+    monkeypatch.setattr(pipeline, 'finish_item', lambda *args, **kwargs: True)
+    _, picks = pipeline.process_candidates(rows, cfg, policy['rules'], policy['exclude'],
+        state, object(), NoNetwork(), DAY, Progress(tmp_path / 'refill.log'))
+    assert len(picks) == 7
+    assert len(assessed) > cfg['max_analysis_candidates']
+    assert 'analysis refill' in (tmp_path / 'refill.log').read_text(encoding='utf-8')
     state.close()
 
 
