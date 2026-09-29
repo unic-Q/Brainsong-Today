@@ -33,7 +33,7 @@ def test_dictionary_banned_not_bciwiki():
 
 
 def test_active_profile_limits_all_categories_to_three_days(tmp_path):
-    cfg, _, _, _ = load(ROOT)
+    cfg, _, _ = load(ROOT)
     assert set(cfg['windows'].values()) == {3}
     state = State(tmp_path/'test.db')
     fresh = Article('新品', 'https://example.org/a', str(DAY), '测试', score=70)
@@ -44,7 +44,7 @@ def test_active_profile_limits_all_categories_to_three_days(tmp_path):
 
 
 def test_length_failure_retries_smaller_inputs_and_batches(tmp_path):
-    cfg, policy, _, _ = load(ROOT)
+    cfg, policy, _ = load(ROOT)
     rows = [Article(f'脑电{i}', f'https://example.org/{i}', str(DAY), '测试', summary='公开摘要内容。'*120) for i in range(4)]
     class AI:
         calls = []
@@ -62,7 +62,7 @@ def test_length_failure_retries_smaller_inputs_and_batches(tmp_path):
 
 
 def test_queries_are_short_without_synonym_bundles():
-    cfg, policy, _, _ = load(ROOT)
+    cfg, policy, _ = load(ROOT)
     assert all(' OR ' not in q and len(q) <= 55 for _, q in queries(policy['rules'], cfg, DAY))
 
 

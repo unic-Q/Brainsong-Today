@@ -28,7 +28,7 @@ def test_two_stages_never_multiply_relevance_twice(tmp_path):
     assert rows[9].recommendation_score == 91
     assert shortlist_score(rows[9], DAY) == 91
     assert ranking_score(rows[9], DAY+timedelta(days=10), cfg['scoring']) == 91
-    assert '推荐指数：★★★★☆' in render(picks, [], DAY)[1]
+    assert '推荐指数：★★★★☆' in render(picks, DAY)[1]
     state.close()
 
 

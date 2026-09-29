@@ -27,7 +27,7 @@ def make_item(n, category='行业', published='2026-09-18', title=None):
 
 
 def run_batch(tmp_path, monkeypatch, items, reject_first=False, counts=None, cfg_updates=None):
-    cfg, policy, _, _ = pipeline.load(ROOT)
+    cfg, policy, _ = pipeline.load(ROOT)
     cfg.update(cfg_updates or {})
     state = State(tmp_path / 'test.sqlite3')
     if counts:
@@ -134,7 +134,7 @@ def test_full_direction_gets_only_one_clear_replacement_check():
 
 
 def test_skipped_metadata_does_not_spend_ai_budget(tmp_path, monkeypatch):
-    cfg, policy, _, _ = pipeline.load(ROOT)
+    cfg, policy, _ = pipeline.load(ROOT)
     cfg['max_analysis_candidates'] = 3
     state = State(tmp_path / 'state.db')
     rows = [make_item(i) for i in range(9)]
@@ -183,7 +183,7 @@ def test_failed_summary_refills_instead_of_stopping(tmp_path, monkeypatch):
 
 
 def test_analysis_continues_past_initial_budget_when_fewer_than_seven_selected(tmp_path, monkeypatch):
-    cfg, policy, _, _ = pipeline.load(ROOT)
+    cfg, policy, _ = pipeline.load(ROOT)
     cfg['max_analysis_candidates'] = 3
     state = State(tmp_path / 'refill.db')
     rows = [make_item(i) for i in range(15)]

@@ -24,6 +24,7 @@
   specialist: true
   enabled: true
   category: 资本
+  allow_recent_without_date: true
 - id: stdaily
   name: 科技日报·中国科技网
   url: https://www.stdaily.com/
@@ -68,6 +69,7 @@
   type: 行业媒体
   enabled: true
   category: 行业
+  allow_recent_without_date: true
 - id: verge
   name: The Verge
   url: https://www.theverge.com/rss/index.xml
@@ -86,6 +88,7 @@
   type: 企业官网
   enabled: true
   category: 行业
+  allow_recent_without_date: true
 - id: emotiv
   name: EMOTIV
   url: https://www.emotiv.com/blog
@@ -95,6 +98,7 @@
   type: 企业官网
   enabled: true
   category: 行业
+  allow_recent_without_date: true
 - id: muse
   name: Muse
   url: https://choosemuse.com/blogs/news.atom
@@ -135,7 +139,8 @@
   links: a[href*='/article/detail/']
   type: 财经媒体
   enabled: true
-  category: 行业
+  category: 资本
+  allow_recent_without_date: true
 - id: pedaily
   name: 投资界
   url: https://www.pedaily.cn/
@@ -160,6 +165,7 @@
   type: 垂直媒体
   enabled: true
   category: 行业
+  allow_recent_without_date: true
 - id: arxiv
   name: arXiv
   url: https://export.arxiv.org/api/query

@@ -101,7 +101,9 @@ def assess(provider, candidates, profile, rules, evidence_limit=700):
     payload = {
         "company_profile": profile,
         "priority_rules": [{"id": r["id"], "weight": r["weight"], "purpose": r["purpose"]} for r in rules],
-        "articles": [{"id": key, "title": a.title, "date": a.published,
+        "articles": [{"id": key, "title": a.title,
+                      "date": "" if a.date_evidence == 'recent_first_seen' else a.published,
+                      "first_seen": a.first_reported if a.date_evidence == 'recent_first_seen' else "",
                       "source": a.source, "url": a.url, "evidence": (a.summary or a.body)[:evidence_limit],
                       "matched_rules": [{"id": r["id"], "weight": r["weight"]} for r in a.matches]}
                      for key, a in zip(ids, candidates)],
@@ -116,6 +118,7 @@ def assess(provider, candidates, profile, rules, evidence_limit=700):
 单纯课堂脑电认知负荷应用试验约10，不能凭教育+脑电就打高分；脑电基础模型开放代码约90，课堂耳机产品约80。按具体贡献和证据区分，不将所有教育研究都定为10。
 脑电情绪识别是正向应用方向；有可复用模型和公开验证数据的相关论文约85。其他脑电论文仍可入选，仅在同等条件下略低，不能仅因未研究情绪识别而拒绝。
 旧政策的新解读不能表述为新发布政策。神经数据隐私、伦理和脑电数据质量等共用要求可接受。
+date为空而first_seen有值时，first_seen仅表示首次发现，不是发表或事件日期；不得推断文章今天发布。
 不得以标题出现关键词就断定相关。未命中规则不代表无关，尤其新公司及脑电SDK；应判断实际技术或商业联系，不得凭未知公司名猜测其业务。
 返回 {"items":[{"id":"原样ID","relevance":0到100整数,"accept":true或false,
 "category":"政策或行业或资本或学术","tags":["最多三个短标签"],

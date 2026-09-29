@@ -12,8 +12,7 @@ import yaml
 from repo_courier.pushers.feishu import FeishuPusher
 from .collect import Reader, bing_news, collect_source, collect_wechat, from_search, metadata
 from .editor import compact_title, display_summary, usable_summary, merge, merge_event_reports, prepare, relevance_filter, render, select, summarize, fill_link_only
-from .events import verify_events
-from .model import Article, digest, ranking_score, shortlist_score, freshness_factor, source_factor, star_text
+from .model import Article, digest, ranking_score, shortlist_score, freshness_factor, source_factor, source_key, star_text, verified_arxiv_date
 from .provider import OfficialGLM
 from .secrets import api_key
 from .state import State
@@ -26,7 +25,6 @@ def load(root):
     cfg = yaml.safe_load((root / "config/brainsong.yaml").read_text(encoding="utf-8"))
     rules = yaml.safe_load((root / "config/keywords.yaml").read_text(encoding="utf-8"))
     sources = yaml.safe_load((root / "config/sources.yaml").read_text(encoding="utf-8"))
-    events = json.loads((root / "config/events.json").read_text(encoding="utf-8"))
     profiles = cfg.get('operation_profiles', {})
     preset = profiles.get('presets', {}).get(profiles.get('active'))
     if (not isinstance(preset, dict) or type(preset.get('lookback_days')) is not int
@@ -56,7 +54,7 @@ def load(root):
         raise ValueError("推送配置超出范围")
     if type(cfg.get("max_academic_items", 3)) is not int or not 0 <= cfg.get("max_academic_items", 3) <= 3:
         raise ValueError("学术条数必须为0至3")
-    for key, maximum in [('max_category_items', 3), ('max_company_items', 2), ('max_events', 3)]:
+    for key, maximum in [('max_category_items', 3), ('max_company_items', 2)]:
         value = cfg.get(key, maximum)
         if type(value) is not int or not 1 <= value <= maximum:
             raise ValueError('配额配置超出范围: ' + key)
@@ -85,7 +83,7 @@ def load(root):
     for values in list(scoring.get('source_domains', {}).values()) + list(scoring.get('source_reputation', {}).values()):
         if not isinstance(values, list) or len(values) != 2 or any(not isinstance(v,(int,float)) or not 0 <= v <= 100 for v in values):
             raise ValueError('来源权威性/知名度须为0到100')
-    return cfg, rules, sources, events
+    return cfg, rules, sources
 
 
 def queries(rules, cfg, today):
@@ -114,7 +112,8 @@ def active_window(item, cfg, today):
 
 def fresh_collection(items, cfg, today):
     """Discard explicitly old rows before persistence; undated rows still need metadata."""
-    return [item for item in items if not item.published or active_window(item, cfg, today)]
+    return [item for item in items if verified_arxiv_date(item)
+            and (not item.published or active_window(item, cfg, today))]
 
 
 def source_date_report(source_id, items, reader, raw_items=None):
@@ -181,10 +180,7 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
     replacement_counts = replacement_counts if replacement_counts is not None else Counter()
     source_counts = source_counts if source_counts is not None else Counter()
     source_limit = max(2, ceil(cfg.get('max_analysis_candidates', 36) * cfg.get('max_source_share', .25)))
-    def source_key(a):
-        host = (urlsplit(a.url).hostname or '').lower()
-        return host.removeprefix('www.').removeprefix('m.') or a.source.casefold()
-    direction_priority = {'政策': 0, '行业': 1, '资本': 2, '学术': 3, '展会': 4}
+    direction_priority = {'政策': 0, '行业': 1, '资本': 2, '学术': 3}
     def needs_read(a):
         return not a.published or (not usable_summary(a.summary, a.title) and not a.body)
     def full(a):
@@ -236,9 +232,11 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
 
 
 def process_candidates(items, cfg, rules, exclusions, state, provider, reader, today,
-                       progress, *, offline=False, no_ai=False, date_checks=None):
+                       progress, *, offline=False, no_ai=False, date_checks=None,
+                       recent_undated_ids=None):
     """Retain everything; spend enrichment and AI work only on priority batches."""
-    pool = merge([a for a in items if not state.deleted(a)])
+    recent_undated_ids = recent_undated_ids or set()
+    pool = merge([a for a in items if not state.deleted(a) and verified_arxiv_date(a)])
     queue = []
     for item in pool:
         if (not prepare(item, rules, exclusions) or state.sent(item) or not business_context(item, cfg)
@@ -313,8 +311,22 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                     continue
                 metadata_reads += 1
                 progress('article read', article=cursor-len(raw)+offset)
+                listing_date_evidence = item.date_evidence
+                version_date = item.published if item.date_evidence == 'arxiv_version' else ''
                 try:
                     metadata(item, reader.get(item.url))
+                    if version_date:
+                        item.published = version_date
+                        item.date_evidence = 'arxiv_version'
+                    # First discovery is a freshness signal, not a publication date.
+                    # Only trusted, configured industry/capital listings may use it.
+                    if (not item.published and item.identity in recent_undated_ids
+                            and listing_date_evidence == 'no_date_hint'
+                            and item.date_evidence == 'no_date_hint'):
+                        item.published = today.isoformat()
+                        item.first_reported = today.isoformat()
+                        item.date_evidence = 'recent_first_seen'
+                        progress('recent first seen', article=cursor-len(raw)+offset)
                     if date_checks is not None:
                         date_checks.append({'source': item.source, 'status': item.date_evidence,
                                             'dated': bool(item.published)})
@@ -322,6 +334,10 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                     state.error(today, '文章读取:' + item.url, exc)
                     if date_checks is not None:
                         date_checks.append({'source': item.source, 'status': 'read_failed', 'dated': False})
+                finally:
+                    if version_date:
+                        item.published = version_date
+                        item.date_evidence = 'arxiv_version'
             # In strict mode, a page whose newly discovered date is already
             # outside the window must not refresh the candidate store.
             if not offline and (not item.published or active_window(item, cfg, today)):
@@ -375,7 +391,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
 
 def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, state_path=None, resume=False, cached_only=False):
     root = Path(root)
-    cfg, policy, sources, events = load(root)
+    cfg, policy, sources = load(root)
     rules, exclusions = policy["rules"], policy["exclude"]
     if offline and send:
         raise ValueError("离线样例不允许推送")
@@ -392,6 +408,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
     progress('run start', cached_only=cached_only, resume=resume, send=send)
     source_stats = []
     date_checks = []
+    recent_undated_ids = set()
     try:
         state.prune(today, cfg['lookback_days'], drop_undated=True,
                     use_first_reported=cfg.get('strict_event_freshness', False))
@@ -443,6 +460,11 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                                    filter_relevance=False,
                                                    lookback_days=cfg['lookback_days'])
                         collected = fresh_collection(collected, cfg, today)
+                        if source.get('allow_recent_without_date') and source.get('category') in {'行业', '资本'}:
+                            recent_undated_ids.update(
+                                item.identity for item in collected
+                                if not item.published and item.date_evidence == 'no_date_hint'
+                                and not state.ever_seen(item))
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                         source_stats.append(source_date_report(source['id'], collected, reader))
@@ -476,6 +498,10 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         source_stats.append(source_failure_report('bing:' + topic, 'failed', exc))
             if cfg["search_enabled"]:
                 for topic, query in queries(rules, cfg, today):
+                    if topic == '学术':
+                        # arXiv's Atom version timestamps are the only accepted
+                        # academic dates; paid search snippets lack this evidence.
+                        continue
                     try:
                         domain = "arxiv.org" if topic == "学术" else ""
                         found = from_search(provider.search(query, domain, recency=cfg['search_recency']),
@@ -489,16 +515,15 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         source_stats.append(source_failure_report('search:' + topic, 'failed', exc))
         pool, picks = process_candidates(items + state.candidates() + state.recent(today, cfg['lookback_days']),
                                          cfg, rules, exclusions, state, provider, reader, today,
-                                         progress, offline=offline, no_ai=no_ai, date_checks=date_checks)
+                                         progress, offline=offline, no_ai=no_ai, date_checks=date_checks,
+                                         recent_undated_ids=recent_undated_ids)
         picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), shortlist_score(a, today, cfg.get('scoring')), a.identity), reverse=True)
         for item in picks:
             item.recommendation_score = ranking_score(item, today, cfg.get('scoring'))
         for item in pool:
             state.save(item)
-        visible_events = verify_events(events, today, provider, reader, state, offline=offline or no_ai or resume or cached_only)
-        visible_events = visible_events[:cfg.get('max_events', 3)]
-        progress('render', items=len(picks), events=len(visible_events))
-        title, body = render(picks, visible_events, today)
+        progress('render', items=len(picks))
+        title, body = render(picks, today)
         out = root / "reports" / today.isoformat() / ("offline-preview" if offline else "live-preview")
         out.mkdir(parents=True, exist_ok=True)
         (out / "brief.md").write_text(body, encoding="utf-8")
@@ -508,11 +533,11 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                                                  shortlist_score=shortlist_score(a, today, cfg.get('scoring')),
                                                                  stars=star_text(a.recommendation_score),
                                                                  ranking_score=ranking_score(a, today, cfg.get('scoring'))) for a in picks],
-                                                  "events": visible_events}, ensure_ascii=False, indent=2), encoding="utf-8")
+                                                  }, ensure_ascii=False, indent=2), encoding="utf-8")
         delivered = False
-        if send and not picks and not visible_events:
+        if send and not picks:
             state.error(today, '无可发送内容', 'no_qualified_items')
-        if send and (picks or visible_events):
+        if send and picks:
             import os
             webhook = os.getenv("FEISHU_WEBHOOK", "")
             parsed = urlsplit(webhook)
@@ -560,7 +585,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                                                    "responses": provider.diagnostics}, ensure_ascii=False, indent=2), encoding="utf-8")
         rows = state.db.execute("SELECT day,stage,detail FROM errors WHERE day=?", (today.isoformat(),)).fetchall()
         (logs / f"{today.isoformat()}.log").write_text("\n".join(" | ".join(r) for r in rows), encoding="utf-8")
-        return {"report": str(out / "brief.md"), "items": len(picks), "events": len(visible_events),
+        return {"report": str(out / "brief.md"), "items": len(picks),
                 "sent": delivered, "calls": provider.calls, "errors": len(rows)}
     finally:
         logs = root / "logs"

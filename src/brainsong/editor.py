@@ -94,10 +94,10 @@ def relevance_filter(items, provider, cfg, rules, state, today):
     profile = cfg['profile']
     if cfg.get('relevance_examples'):
         profile += '\n用户最新相关性评分锚点（优先于通用偏好；不是已发生的新闻）：' + json.dumps(cfg['relevance_examples'], ensure_ascii=False)
-    signature = digest(json.dumps(["assessment-v6-calibrated", profile, rules], ensure_ascii=False, sort_keys=True))
+    signature = digest(json.dumps(["assessment-v7-undated-safety", profile, rules], ensure_ascii=False, sort_keys=True))
     pending = []
     for item in items:
-        evidence_hash = digest(item.title + (item.summary or item.body)[:700])
+        evidence_hash = digest(item.title + item.date_evidence + (item.summary or item.body)[:700])
         cache_key = "ai:" + item.identity
         cached = state.get(cache_key)
         if cached and cached["signature"] == signature and cached["evidence"] == evidence_hash:
@@ -155,6 +155,9 @@ def apply_assessment(item, row, scoring=None, policy_scope=None):
     # A category boost can admit a near-threshold business item, but never
     # override an explicit AI rejection.
     item.accepted = row["accept"] and effective_relevance(item, scoring) >= 60
+    # First discovery is not publication evidence for policy or research.
+    if item.date_evidence == 'recent_first_seen' and item.category not in {'行业', '资本'}:
+        item.accepted = False
     if item.category == '政策' and policy_scope == 'china' and not china_policy_evidence(item):
         item.accepted = False
     item.tags = [re.sub(r"[\[\]<>\n]", "", t)[:18] for t in row["tags"][:3]]
@@ -179,7 +182,9 @@ def merge_event_reports(items, provider, state, today):
     rows = [a for a in items if a.category != '学术' and a.accepted]
     if len(rows) < 2:
         return items
-    payload = [{'id': f'A{i}', 'title': a.title, 'date': a.published,
+    payload = [{'id': f'A{i}', 'title': a.title,
+                'date': '' if a.date_evidence == 'recent_first_seen' else a.published,
+                'first_seen': a.first_reported if a.date_evidence == 'recent_first_seen' else '',
                 'category': a.category, 'summary': a.summary[:240]} for i, a in enumerate(rows)]
     key = 'dedup:' + digest(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     cached = state.get(key)
@@ -234,7 +239,8 @@ def merge_event_reports(items, provider, state, today):
 
 
 def select(items, state, today, cfg):
-    eligible = [a for a in items if a.accepted and a.in_window(
+    eligible = [a for a in items if a.accepted and
+        (a.date_evidence != 'recent_first_seen' or a.category in {'行业', '资本'}) and a.in_window(
         today, cfg["windows"], cfg.get('strict_event_freshness', False)) and not state.sent(a)]
     scoring = cfg.get('scoring', {})
     eligible = [a for a in eligible if shortlist_score(a, today, scoring) > 0 and ranking_score(a, today, scoring) > 0]
@@ -299,7 +305,9 @@ def fill_link_only(picks, failed, state, today, cfg):
     for item in sorted(failed, key=lambda a: (ranking_score(a,today,scoring),shortlist_score(a,today,scoring),a.identity),reverse=True):
         if len(result) >= min(7,cfg['max_items']):
             break
-        if (item.identity in seen or not item.accepted or item.relevance is None or effective_relevance(item, scoring) < 60
+        if (item.identity in seen or not item.accepted or
+                (item.date_evidence == 'recent_first_seen' and item.category not in {'行业', '资本'}) or
+                item.relevance is None or effective_relevance(item, scoring) < 60
                 or item.summary_kind != 'failed' or not canonical(item.url) or not item.title.strip()
                 or state.sent(item) or state.deleted(item) or not item.in_window(
                     today, cfg['windows'], cfg.get('strict_event_freshness', False))
@@ -364,7 +372,7 @@ def fit_summary(text, limit=100):
 
 
 def summarize(item, provider, state, today):
-    version = '100-v5-subject-first'
+    version = '100-v6-undated-safety'
     item.capture_source()
     def subject_first(text):
         return item.subject + '：' + text if item.subject and not text.startswith(item.subject) else text
@@ -378,8 +386,8 @@ def summarize(item, provider, state, today):
     source_summary = item.source_summary if usable_summary(item.source_summary, item.title) else ""
     paragraphs = (item.body or item.source_excerpt).splitlines()
     evidence = source_summary[:6000] or "\n".join(paragraphs[:4] + [p for p in paragraphs[4:] if match_rules("", "", p, item.matches)])[:6000]
-    signature = digest(item.title + evidence + item.subject)
-    cache_key = "summary-v5:" + item.identity
+    signature = digest(item.title + evidence + item.subject + item.date_evidence)
+    cache_key = "summary-v6:" + item.identity
     cached = state.get(cache_key)
     if cached and cached.get("evidence") == signature and display_summary(cached.get("summary", ""), item.title):
         item.summary = cached["summary"]
@@ -391,8 +399,10 @@ def summarize(item, provider, state, today):
         state.error(today, "摘要", QualityError("summary_insufficient_evidence"))
         return
     try:
-        value = provider.chat('只根据原始材料写中文事实摘要，摘要单独计算，含标点不超过100个字符；标题、日期、标签、来源与链接不计入。材料充分时目标70至100字。必须以subject指定的事件主体开头，再写动作和结果；不是以报道媒体开头。论文有机构/教授团队就写清；没有明确姓名不得猜测。subject为空时只使用证据中明确的主体。材料不足可更短，严禁扩写无依据的事实。保留重要数字和不确定性。区分报道日期与事件日期，历史政策解读须注明解读或回顾，不得写成刚发布，不随意使用今日。不要理由、评分或链接。返回 {"summary":"..."}。',
-                              {"title": item.title, "evidence": evidence, 'subject': item.subject})
+        value = provider.chat('只根据原始材料写中文事实摘要，摘要单独计算，含标点不超过100个字符；标题、日期、标签、来源与链接不计入。材料充分时目标70至100字。必须以subject指定的事件主体开头，再写动作和结果；不是以报道媒体开头。论文有机构/教授团队就写清；没有明确姓名不得猜测。subject为空时只使用证据中明确的主体。材料不足可更短，严禁扩写无依据的事实。保留重要数字和不确定性。区分报道日期与事件日期，历史政策解读须注明解读或回顾，不得写成刚发布，不随意使用今日。若publication_date为空，表示发布日期未知；first_seen仅是系统首次发现日期，绝不能写成当天发布。不要理由、评分或链接。返回 {"summary":"..."}。',
+                              {"title": item.title, "evidence": evidence, 'subject': item.subject,
+                               'publication_date': '' if item.date_evidence == 'recent_first_seen' else item.published,
+                               'first_seen': item.first_reported if item.date_evidence == 'recent_first_seen' else ''})
         summary = value.get("summary")
         if isinstance(summary, str):
             summary = subject_first(summary.strip())
@@ -401,7 +411,9 @@ def summarize(item, provider, state, today):
             value = provider.chat('根据原始证据压缩草稿。只保留证据支持的核心事实，不添加或推测。'
                                   '中文摘要含标点70至100字符，材料不足可更短。删去次要细节以确保不超过100字符。'
                                   '以subject事件主体开头，不猜测姓名。只返回 {"summary":"..."}。',
-                                  {'title': item.title, 'evidence': evidence, 'draft': summary[:1000], 'subject': item.subject})
+                                  {'title': item.title, 'evidence': evidence, 'draft': summary[:1000], 'subject': item.subject,
+                                   'publication_date': '' if item.date_evidence == 'recent_first_seen' else item.published,
+                                   'first_seen': item.first_reported if item.date_evidence == 'recent_first_seen' else ''})
             summary = value.get('summary')
         if isinstance(summary, str):
             summary = subject_first(summary.strip())
@@ -453,7 +465,7 @@ def escape(text):
     return re.sub(r"([\\`*_\[\]<>])", r"\\\1", str(text)).replace("\n", " ")
 
 
-def render(items, events, today):
+def render(items, today):
     title = f"Brainsong Today | {today.isoformat()}"
     lines = [title, ""]
     for n, item in enumerate(items[:7], 1):
@@ -462,14 +474,11 @@ def render(items, events, today):
         names = list(dict.fromkeys(s["name"] for s in item.sources))
         lines += [f"**{n}. [{item.category}] {escape(item.display_title or item.title)}**",
                   '推荐指数：' + star_text(item.recommendation_score if item.recommendation_score is not None else ranking_score(item, today)),
-                  f"{item.published[:10]} · {tags}{flag}"]
+                  f"{'近期' if item.date_evidence == 'recent_first_seen' else item.published[:10]} · {tags}{flag}"]
         if item.summary:
             lines.append(escape(short_text(item.summary)))
         lines += [
                   f"（来源：{'、'.join(escape(n) for n in names[:5])}）[原文]({item.url.replace(')', '%29').replace('(', '%28')})", ""]
-    for event in events[:3]:
-        lines += [f"[展会] {escape(event['name'])}｜{event['date']}｜{escape(event['place'])}｜{escape(event['kind'])}",
-                  f"[原文]({event['url']})", ""]
     body = "\n".join(lines).strip()
     if len(body) > 18000:
         raise ValueError("简报超长，禁止静默截断")

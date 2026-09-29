@@ -87,8 +87,7 @@ def main():
         if not s.get('enabled'):
             s.update(kind='search', enabled=True, query=s['name']+' 脑电 耳机 新品')
     (output/'sources.yaml').write_text(yaml.safe_dump(sources, allow_unicode=True, sort_keys=False), encoding='utf-8')
-    (output/'events.json').write_bytes((assets/'events.json').read_bytes())
-    print(f'Imported {len(rules)} explicit rules, {len(sources)} source definitions; events remain unverified.')
+    print(f'Imported {len(rules)} explicit rules and {len(sources)} source definitions.')
 
 
 if __name__ == '__main__':

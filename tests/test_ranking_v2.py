@@ -11,7 +11,7 @@ DAY = date(2026, 9, 18)
 
 
 def test_company_aliases_and_category_caps(tmp_path):
-    cfg, _, _, _ = load(ROOT)
+    cfg, _, _ = load(ROOT)
     state = State(tmp_path / 'state.db')
     rows = [Article(f'{name}发布脑电耳机{i}', f'https://example.org/{i}', str(DAY), '官网',
                     score=90, category=['行业','资本','学术'][i%3])
@@ -43,10 +43,10 @@ def test_reprint_keeps_old_event_date():
 
 def test_partial_brief_can_send(tmp_path, monkeypatch):
     from brainsong import pipeline
-    cfg, policy, _, _ = load(ROOT)
+    cfg, policy, _ = load(ROOT)
     cfg['search_enabled'] = False
     a = Article('脑电耳机新品', 'https://example.org/a', str(DAY), '官网', summary='脑电耳机支持课堂中的学习状态监测。')
-    monkeypatch.setattr(pipeline, 'load', lambda root: (cfg, policy, [], []))
+    monkeypatch.setattr(pipeline, 'load', lambda root: (cfg, policy, []))
     monkeypatch.setattr(pipeline, 'api_key', lambda: 'offline-test-key')
     monkeypatch.setattr(pipeline, 'process_candidates', lambda *args, **kwargs: ([a], [a]))
     calls = []

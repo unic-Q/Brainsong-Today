@@ -43,7 +43,7 @@ def test_partial_failure_retries_only_invalid_rows(tmp_path):
             return {'items':rows}
     ai = AI()
     state = State(tmp_path/'state.db')
-    cfg,_,_,_ = load(ROOT)
+    cfg,_,_ = load(ROOT)
     result = relevance_filter([article(1),article(2)],ai,cfg,[RULE],state,DAY)
     assert ai.sizes == [2,1] and len(result) == 2
     assert all(a.relevance == 80 and a.score == 92 for a in result)
@@ -103,8 +103,8 @@ def test_summary_100_boundary_and_render_without_50_cut(tmp_path):
     a = article(summary=text)
     summarize(a, NoAI(), state, DAY)
     assert a.summary == text
-    assert text in render([a], [], DAY)[1]
-    assert a.title in render([a], [], DAY)[1]
+    assert text in render([a], DAY)[1]
+    assert a.title in render([a], DAY)[1]
     state.close()
 
 
@@ -121,7 +121,7 @@ def test_wechat_plain_text_and_strict_host():
 
 def test_brain_company_synonym_and_eastmoney_date():
     from brainsong.collect import metadata
-    _,policy,_,_=load(ROOT)
+    _,policy,_=load(ROOT)
     a=Article('脑机公司，拔苗助长','https://example.org/a',DAY.isoformat(),'测试','上市太早。')
     assert prepare(a,policy['rules'],policy['exclude'])
     a=Article('脑电企业融资','https://finance.eastmoney.com/a/123.html','','财经')

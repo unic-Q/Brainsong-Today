@@ -20,7 +20,7 @@ def test_title_and_summary_independent(tmp_path):
     assert a.title == original
     assert a.display_title != original
     assert a.summary == '脑电系统用于学习状态监测。'
-    _, body = render([a], [], DAY)
+    _, body = render([a], DAY)
     assert a.display_title in body and a.summary in body
     state.close()
 
@@ -28,7 +28,7 @@ def test_title_and_summary_independent(tmp_path):
 def test_no_title_hard_cut():
     title = '脑电研究' * 60
     a = Article(title, 'https://example.org/a', str(DAY), '测试')
-    assert title in render([a], [], DAY)[1]
+    assert title in render([a], DAY)[1]
 
 
 def test_select_and_render_seven(tmp_path):
@@ -37,7 +37,7 @@ def test_select_and_render_seven(tmp_path):
     cfg = {'max_items': 7, 'windows': {'行业': 30, '资本':30, '政策':30}, 'exploration_ratio': .1}
     picks = select(rows, state, DAY, cfg)
     assert len(picks) == 7
-    body = render(rows, [], DAY)[1]
+    body = render(rows, DAY)[1]
     assert '**7.' in body and '**8.' not in body
     state.close()
 
@@ -45,11 +45,11 @@ def test_select_and_render_seven(tmp_path):
 def test_pipeline_replenishes_failed_summaries(tmp_path, monkeypatch):
     import brainsong.pipeline as pipeline
     root = __import__('pathlib').Path(__file__).resolve().parents[1]
-    cfg, policy, _, _ = pipeline.load(root)
+    cfg, policy, _ = pipeline.load(root)
     cfg['search_enabled'] = False
     rows = [Article(f'脑电耳机{"融资" if i%3 == 1 else "新品"}{i}', f'https://example.org/{i}', str(DAY), '测试',
                     summary='脑电耳机支持课堂中的学习状态监测。', category=['行业','资本','政策'][i%3]) for i in range(12)]
-    monkeypatch.setattr(pipeline, 'load', lambda root: (cfg, policy, [{'id': 'test', 'kind': 'html'}], []))
+    monkeypatch.setattr(pipeline, 'load', lambda root: (cfg, policy, [{'id': 'test', 'kind': 'html'}]))
     monkeypatch.setattr(pipeline, 'api_key', lambda: 'test-no-network')
     monkeypatch.setattr(pipeline, 'collect_source', lambda *args, **kwargs: rows)
     monkeypatch.setattr(pipeline, 'relevance_filter', lambda items, *args: items)
