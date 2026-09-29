@@ -117,6 +117,22 @@ def test_ai_receives_discovery_date_separately_from_publication_date(tmp_path):
     state.close()
 
 
+def test_undated_summary_cannot_claim_it_was_published_today(tmp_path):
+    item = Article('脑电耳机新品', 'https://trusted.example/news/claim', DAY.isoformat(), '定向站',
+                   '今日发布脑电耳机。', body='一家企业推出脑电耳机，支持睡眠分析和脑电数据采集。',
+                   first_reported=DAY.isoformat(), date_evidence='recent_first_seen')
+    state = State(tmp_path / 'state.sqlite3')
+
+    class AI:
+        def chat(self, task, payload):
+            return {'summary': '一家企业今日发布脑电耳机，支持睡眠分析和脑电数据采集。'}
+
+    summarize(item, AI(), state, DAY)
+    assert item.summary_kind == 'failed'
+    assert not item.summary
+    state.close()
+
+
 @pytest.mark.parametrize('category,allowed', [('行业', True), ('资本', True),
                                                ('政策', False), ('学术', False)])
 def test_ai_reclassified_undated_item_cannot_use_recent_for_policy_or_academic(tmp_path, category, allowed):

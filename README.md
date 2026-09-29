@@ -30,6 +30,8 @@ uv run brainsong-today --send      # 明确发送到飞书
 
 主要配置位于 [`config/brainsong.yaml`](config/brainsong.yaml)、[`config/keywords.yaml`](config/keywords.yaml) 和 [`config/sources.yaml`](config/sources.yaml)。详细设置与运行方式见 [使用说明](使用说明-Brainsong%20Today.md)。
 
+对外讲解可打开 [工作原理单页](docs/brainsong-today-explained.html)：包含采集、筛选、排序和推送流程图，可离线浏览。
+
 ## GitHub Actions
 
 工作流见 [`.github/workflows/daily.yml`](.github/workflows/daily.yml)。在仓库的 **Settings → Secrets and variables → Actions** 中设置：

@@ -374,9 +374,23 @@ def fit_summary(text, limit=100):
 def summarize(item, provider, state, today):
     version = '100-v6-undated-safety'
     item.capture_source()
+    def claims_known_day(text):
+        if item.date_evidence != 'recent_first_seen':
+            return False
+        first = item.first_reported[:10]
+        try:
+            from datetime import date
+            known = date.fromisoformat(first)
+            date_forms = (first, f'{known.year}年{known.month}月{known.day}日',
+                          f'{known.month}月{known.day}日')
+        except ValueError:
+            date_forms = (first,) if first else ()
+        return bool(re.search(r'今日|今天|当日|本日', text) or
+                    any(form in text for form in date_forms))
     def subject_first(text):
         return item.subject + '：' + text if item.subject and not text.startswith(item.subject) else text
-    if display_summary(item.summary, item.title) and (item.summary_kind != 'ai' or item.summary_version == version):
+    if (display_summary(item.summary, item.title) and not claims_known_day(item.summary)
+            and (item.summary_kind != 'ai' or item.summary_version == version)):
         front = subject_first(item.summary)
         if display_summary(front, item.title):
             if front != item.summary and item.summary_kind != 'ai':
@@ -389,7 +403,9 @@ def summarize(item, provider, state, today):
     signature = digest(item.title + evidence + item.subject + item.date_evidence)
     cache_key = "summary-v6:" + item.identity
     cached = state.get(cache_key)
-    if cached and cached.get("evidence") == signature and display_summary(cached.get("summary", ""), item.title):
+    if (cached and cached.get("evidence") == signature and
+            display_summary(cached.get("summary", ""), item.title) and
+            not claims_known_day(cached["summary"])):
         item.summary = cached["summary"]
         item.summary_kind = "ai"
         item.summary_version = version
@@ -419,6 +435,8 @@ def summarize(item, provider, state, today):
             summary = subject_first(summary.strip())
         if isinstance(summary, str) and len(summary) > 100:
             summary = fit_summary(summary)
+        if isinstance(summary, str) and claims_known_day(summary):
+            raise QualityError('undated_claims_discovery_day')
         if not isinstance(summary, str) or not display_summary(summary.strip(), item.title):
             raise QualityError("summary_invalid_or_over_100")
         item.summary = summary.strip()
