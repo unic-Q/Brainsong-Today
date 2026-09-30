@@ -61,9 +61,10 @@ def test_length_failure_retries_smaller_inputs_and_batches(tmp_path):
     state.close()
 
 
-def test_queries_are_short_without_synonym_bundles():
+def test_queries_use_configured_synonyms_within_api_limit():
     cfg, policy, _ = load(ROOT)
-    assert all(' OR ' not in q and len(q) <= 55 for _, q in queries(policy['rules'], cfg, DAY))
+    assert all(len(q) <= 70 for _, q in queries(policy['rules'], cfg, DAY))
+    assert any(' OR ' in q for _, q in queries(policy['rules'], cfg, DAY))
 
 
 def test_semantic_reprint_inherits_sent_alias(tmp_path):

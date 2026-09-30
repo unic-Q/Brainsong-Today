@@ -29,6 +29,7 @@
   name: 科技日报·中国科技网
   url: https://www.stdaily.com/
   kind: search
+  search_rotation_group: 0
   category: 行业
   enabled: true
   query: 脑机接口 脑电 耳机 教育 睡眠
@@ -36,6 +37,7 @@
   name: 科普中国
   url: https://www.kepuchina.cn/
   kind: search
+  search_rotation_group: 1
   category: 行业
   enabled: true
   query: 脑机接口 脑电 耳机 科普
@@ -43,6 +45,7 @@
   name: DeepTech·MIT科技评论中文网
   url: https://www.mittrchina.com/
   kind: search
+  search_rotation_group: 1
   category: 行业
   enabled: true
   query: 脑机接口 脑电 神经科技 耳机
@@ -111,6 +114,7 @@
   name: Sennheiser
   url: https://newsroom.sennheiser.com/
   kind: search
+  search_rotation_group: 1
   links: a[href]
   type: 企业官网
   enabled: true
@@ -177,6 +181,7 @@
   name: 36氪
   url: https://36kr.com/feed
   kind: search
+  search_rotation_group: 0
   type: 行业媒体
   enabled: true
   status: 返回安全检测页；保留搜索补充
@@ -186,6 +191,7 @@
   name: BrainCo 强脑科技
   url: https://www.brainco.cn/news/
   kind: search
+  search_rotation_group: 1
   type: 企业官网
   enabled: true
   status: 静态响应没有新闻条目；保留公司名搜索
@@ -195,6 +201,7 @@
   name: Sony 新闻中心
   url: https://www.sony.com/en/SonyInfo/News/Press/
   kind: search
+  search_rotation_group: 0
   type: 企业官网
   enabled: true
   status: HTTP 403；未接入
@@ -204,6 +211,7 @@
   name: 国家药品监督管理局
   url: https://www.nmpa.gov.cn/
   kind: search
+  search_rotation_group: 0
   category: 政策
   enabled: true
   query: 脑机接口 脑电 神经数据 医疗器械 指导原则

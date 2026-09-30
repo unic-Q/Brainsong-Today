@@ -50,6 +50,8 @@ def load(root):
         if not 1 <= rule["weight"] <= 100 or not rule["groups"] or not all(
                 isinstance(g, list) and g and all(isinstance(w, str) and w.strip() for w in g) for g in rule["groups"]):
             raise ValueError("规则表格式错误")
+        if not isinstance(rule.get('query'), str) or not rule['query'].strip():
+            raise ValueError('检索词不能为空: ' + rule['id'])
     if not 0 <= cfg["exploration_ratio"] <= .3 or not 1 <= cfg["max_items"] <= 7:
         raise ValueError("推送配置超出范围")
     search_plan = cfg.get('search_plan', {})
@@ -77,6 +79,15 @@ def load(root):
         if sum(topic in rule.get('topics', []) and rule.get('search_enabled', True)
                for rule in rules['rules']) < 5:
             raise ValueError('检索方向不足5个可用词: ' + topic)
+    site_limit = cfg.get('site_search_limit', 4)
+    search_sources = [source for source in sources if source.get('enabled', True) and source['kind'] == 'search']
+    if type(site_limit) is not int or site_limit < 1 or any(
+            type(source.get('search_rotation_group')) is not int
+            or source['search_rotation_group'] not in (0, 1) for source in search_sources):
+        raise ValueError('定向搜索信源须分入轮换组0或1')
+    if any(sum(source['search_rotation_group'] == group for source in search_sources) > site_limit
+           for group in (0, 1)):
+        raise ValueError('单个定向搜索轮换组超过每日站点上限')
     scoring = cfg.get('scoring', {})
     category_weights = scoring.get('category_weights', {})
     if set(category_weights) != {'行业', '资本', '政策', '学术'} or any(
@@ -116,13 +127,75 @@ def queries(rules, cfg, today):
             pool = regular or exploratory
             chosen = pool[today.toordinal() % len(pool)]
         for rule in rows[:fixed_count] + [chosen]:
-            words = ' '.join(group[0] for group in rule['groups'][:2])
+            # Search the editable query, including its synonym alternatives.
+            # The matching groups are for article scoring, not query generation.
+            words = rule['query'].strip()
             if len(rule['groups']) == 1 and topic in {'企业', '眼镜可穿戴'}:
                 words += ' ' + intent.split()[0]
             if topic == '政策':
                 words += ' 中国'
-            result.append((topic, words[:55]))
+            if len(words) > 70:
+                raise ValueError('联网搜索词超过70字符: ' + rule['id'])
+            result.append((topic, words))
     return result
+
+
+def site_search_ids(sources, today):
+    """With eight configured sites, the two four-site groups alternate daily."""
+    group = today.toordinal() % 2
+    return {source['id'] for source in sources
+            if source.get('enabled', True) and source['kind'] == 'search'
+            and source['search_rotation_group'] == group}
+
+
+def search_site(provider, source, cfg, today):
+    """Search one scheduled domain, widening only when no dated hit survives."""
+    domain = urlsplit(source['url']).hostname
+    recencies = (('oneDay', 'oneWeek') if cfg.get('strict_event_freshness')
+                 else (cfg['search_recency'],))
+    found, collected, errors = [], [], []
+    for recency in recencies:
+        try:
+            rows = provider.search(source.get('query', '脑机接口 脑电 耳机 教育'), domain,
+                                   recency=recency)
+            batch = from_search(rows, source.get('category', '行业'), domain)
+            found.extend(batch)
+            collected.extend(fresh_collection(batch, cfg, today))
+        except Exception as exc:
+            errors.append((recency, exc))
+        if any(item.published for item in collected):
+            break
+    return found, collected, errors
+
+
+def search_direction(provider, topic, direction_queries, cfg, today, cache=None):
+    """Search one day first; widen at most two queries if dated hits are scarce."""
+    cache = cache if cache is not None else {}
+    batches, errors, dated_hits = [], [], set()
+    category = {'政策': '政策', '资本': '资本'}.get(topic, '行业')
+    def fetch(query, recency):
+        key = (query, recency)
+        if key not in cache:
+            cache[key] = provider.search(query, recency=recency)
+        found = from_search(cache[key], category)
+        collected = fresh_collection(found, cfg, today)
+        batches.append((query, recency, found, collected))
+        dated_hits.update(item.identity for item in collected if item.published)
+    primary = 'oneDay' if cfg.get('strict_event_freshness') else cfg['search_recency']
+    for query in direction_queries:
+        try:
+            fetch(query, primary)
+        except Exception as exc:
+            errors.append((query, primary, exc))
+    if cfg.get('strict_event_freshness') and len(dated_hits) < 2:
+        for query in direction_queries[:2]:
+            if len(dated_hits) >= 2:
+                break
+            try:
+                fetch(query, 'oneWeek')
+            except Exception as exc:
+                errors.append((query, 'oneWeek', exc))
+    return batches, errors
 
 
 def active_window(item, cfg, today):
@@ -454,6 +527,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
         else:
             items = []
             site_searches = 0
+            scheduled_sites = site_search_ids(sources, today)
             # Within the paid site-search budget, official policy entries lead.
             ordered_sources = sorted(sources, key=lambda s: 0 if (urlsplit(s.get('url', '')).hostname or '').endswith('.gov.cn') else 1)
             for source in ordered_sources:
@@ -462,18 +536,19 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                 progress('source start ' + source['id'])
                 try:
                     if source["kind"] == "search":
-                        if site_searches >= cfg.get('site_search_limit', 3):
+                        if source['id'] not in scheduled_sites or site_searches >= cfg.get('site_search_limit', 4):
                             progress('site search deferred ' + source['id'])
                             source_stats.append(source_failure_report(source['id'], 'deferred'))
                             continue
                         site_searches += 1
-                        rows = provider.search(source.get("query", "脑机接口 脑电 耳机 教育"), urlsplit(source["url"]).hostname,
-                                               recency=cfg['search_recency'])
-                        found = from_search(rows, source.get("category", "行业"), urlsplit(source["url"]).hostname)
-                        collected = fresh_collection(found, cfg, today)
+                        found, collected, errors = search_site(provider, source, cfg, today)
+                        for recency, exc in errors:
+                            state.error(today, '定向搜索:' + source['id'] + ':' + recency, exc)
                         state.retain_candidates(collected, today)
                         items.extend(collected)
-                        source_stats.append(source_date_report(source['id'], collected, reader, found))
+                        source_stats.append(source_date_report(source['id'], collected, reader, found)
+                                            if len(errors) < (2 if cfg.get('strict_event_freshness') else 1)
+                                            else source_failure_report(source['id'], 'failed', errors[-1][1]))
                     else:
                         collected = collect_source(source, reader, today, rules,
                                                    filter_relevance=False,
@@ -517,18 +592,18 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                         source_stats.append(source_failure_report('bing:' + topic, 'failed', exc))
             if cfg["search_enabled"]:
                 search_results = {}
+                topic_queries = {}
                 for topic, query in queries(rules, cfg, today):
-                    try:
-                        if query not in search_results:
-                            search_results[query] = provider.search(query, recency=cfg['search_recency'])
-                        found = from_search(search_results[query],
-                                            {"政策": "政策", "资本": "资本"}.get(topic, "行业"))
-                        collected = fresh_collection(found, cfg, today)
+                    topic_queries.setdefault(topic, []).append(query)
+                for topic, direction_queries in topic_queries.items():
+                    batches, errors = search_direction(provider, topic, direction_queries, cfg, today,
+                                                       search_results)
+                    for query, recency, found, collected in batches:
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                         source_stats.append(source_date_report('search:' + topic, collected, reader, found))
-                    except Exception as exc:
-                        state.error(today, "搜索:" + topic, exc)
+                    for query, recency, exc in errors:
+                        state.error(today, '搜索:' + topic + ':' + recency, exc)
                         source_stats.append(source_failure_report('search:' + topic, 'failed', exc))
         pool, picks = process_candidates(items + state.candidates() + state.recent(today, cfg['lookback_days']),
                                          cfg, rules, exclusions, state, provider, reader, today,
