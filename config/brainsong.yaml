@@ -50,14 +50,14 @@ shortlist_items: 10
 max_academic_items: 2
 max_category_items: 3
 max_company_items: 2
-max_analysis_candidates: 36
+max_analysis_candidates: 48
 max_source_share: 0.25
 max_metadata_reads: 12
 max_extra_batches: 1
 policy_scope: china
 max_replacement_candidates_per_category: 1
 replacement_margin: 1.25
-site_search_limit: 3
+site_search_limit: 4
 scoring:
   # Editable editorial presets, not objective measurements of reputation.
   # Applied once inside each independent stage, never compounded to 1.44x.
