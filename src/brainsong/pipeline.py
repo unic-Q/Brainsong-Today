@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from datetime import date
 from math import ceil
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -14,6 +15,7 @@ from .collect import Reader, bing_news, collect_source, collect_wechat, from_sea
 from .editor import compact_title, display_summary, usable_summary, merge, merge_event_reports, prepare, relevance_filter, render, select, summarize, fill_link_only
 from .model import Article, digest, ranking_score, shortlist_score, freshness_factor, source_factor, source_key, star_text, verified_arxiv_date
 from .provider import OfficialGLM
+from .product_pages import detect_product_launches, enrich_product_pages
 from .secrets import api_key
 from .state import State
 from .progress import Progress
@@ -208,6 +210,28 @@ def fresh_collection(items, cfg, today):
             and (not item.published or active_window(item, cfg, today))]
 
 
+def trusted_first_seen(items, source, state, today, lookback_days):
+    """Only a newly observed item on a curated HTML list may use discovery time."""
+    if (source.get('kind') != 'html' or not source.get('enabled', True)
+            or source.get('category') not in {'行业', '资本'}):
+        return {}
+    eligible = {}
+    for item in items:
+        if item.published or item.date_evidence != 'no_date_hint':
+            continue
+        first_seen = state.first_seen(item)
+        if not first_seen and state.ever_seen(item):
+            continue
+        first_seen = first_seen or today.isoformat()
+        try:
+            age = (today - date.fromisoformat(first_seen[:10])).days
+        except ValueError:
+            continue
+        if 0 <= age < lookback_days:
+            eligible[item.identity] = first_seen
+    return eligible
+
+
 def source_date_report(source_id, items, reader, raw_items=None):
     """Show date coverage before and after the freshness window, per source."""
     raw = next((row for row in reversed(reader.observations)
@@ -266,11 +290,13 @@ def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
 
 
 def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploration_due=False,
-                    analysis_counts=None, replacement_counts=None, source_counts=None):
+                    analysis_counts=None, replacement_counts=None, source_counts=None,
+                    trusted_undated_ids=None):
     """Recent business-relevant evidence first; convenience cannot outrank value."""
     analysis_counts = analysis_counts if analysis_counts is not None else Counter()
     replacement_counts = replacement_counts if replacement_counts is not None else Counter()
     source_counts = source_counts if source_counts is not None else Counter()
+    trusted_undated_ids = trusted_undated_ids or set()
     source_limit = max(2, ceil(cfg.get('max_analysis_candidates', 36) * cfg.get('max_source_share', .25)))
     direction_priority = {'政策': 0, '行业': 1, '资本': 2, '学术': 3}
     def needs_read(a):
@@ -310,6 +336,7 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
                     estimated_relevance(a, cfg) < 60,
                     analysis_counts[a.category] + sum(x.category == a.category for x in result),
                     direction_priority.get(a.category, 5),
+                    not (needs_read(a) and a.identity in trusted_undated_ids),
                     -recent,
                     -estimate(a), -source_priority(a, cfg), representation, evidence_level, a.identity)
         chosen = min(available, key=priority)
@@ -327,7 +354,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                        progress, *, offline=False, no_ai=False, date_checks=None,
                        recent_undated_ids=None):
     """Retain everything; spend enrichment and AI work only on priority batches."""
-    recent_undated_ids = recent_undated_ids or set()
+    recent_undated_ids = recent_undated_ids or {}
     pool = merge([a for a in items if not state.deleted(a) and verified_arxiv_date(a)])
     queue = []
     for item in pool:
@@ -386,7 +413,8 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                               can_read=offline or metadata_reads < cfg.get('max_metadata_reads', 12),
                               exploration_due=allowance > 0 and not any(a.exploration for a in picks),
                               analysis_counts=analysis_counts, replacement_counts=replacement_counts,
-                              source_counts=source_counts)
+                              source_counts=source_counts,
+                              trusted_undated_ids=set(recent_undated_ids))
         if not raw:
             progress('no eligible refill within evidence and quota limits', ready=len(picks))
             break
@@ -415,8 +443,9 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                     if (not item.published and item.identity in recent_undated_ids
                             and listing_date_evidence == 'no_date_hint'
                             and item.date_evidence == 'no_date_hint'):
-                        item.published = today.isoformat()
-                        item.first_reported = today.isoformat()
+                        first_seen = recent_undated_ids[item.identity]
+                        item.published = first_seen
+                        item.first_reported = first_seen
                         item.date_evidence = 'recent_first_seen'
                         progress('recent first seen', article=cursor-len(raw)+offset)
                     if date_checks is not None:
@@ -500,7 +529,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
     progress('run start', cached_only=cached_only, resume=resume, send=send)
     source_stats = []
     date_checks = []
-    recent_undated_ids = set()
+    recent_undated_ids = {}
     try:
         state.prune(today, cfg['lookback_days'], drop_undated=True,
                     use_first_reported=cfg.get('strict_event_freshness', False))
@@ -554,11 +583,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                                    filter_relevance=False,
                                                    lookback_days=cfg['lookback_days'])
                         collected = fresh_collection(collected, cfg, today)
-                        if source.get('allow_recent_without_date') and source.get('category') in {'行业', '资本'}:
-                            recent_undated_ids.update(
-                                item.identity for item in collected
-                                if not item.published and item.date_evidence == 'no_date_hint'
-                                and not state.ever_seen(item))
+                        recent_undated_ids.update(trusted_first_seen(
+                            collected, source, state, today, cfg['lookback_days']))
                         state.retain_candidates(collected, today)
                         items.extend(collected)
                         source_stats.append(source_date_report(source['id'], collected, reader))
@@ -612,7 +638,11 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
         picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), shortlist_score(a, today, cfg.get('scoring')), a.identity), reverse=True)
         for item in picks:
             item.recommendation_score = ranking_score(item, today, cfg.get('scoring'))
+        detect_product_launches(picks, provider, state, today, offline=offline, no_ai=no_ai)
+        enrich_product_pages(picks, sources, provider, reader, state, today, offline=offline)
         for item in pool:
+            state.save(item)
+        for item in picks:
             state.save(item)
         progress('render', items=len(picks))
         title, body = render(picks, today)

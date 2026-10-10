@@ -12,6 +12,15 @@ RULE = {"id": "eeg", "groups": [["脑电", "EEG"]], "weight": 100}
 def test_embedded_english_date():
     assert date_text("Published September 17, 2026 | Author") == "2026-09-17"
     assert date_text("更新于2026年9月17日") == "2026-09-17"
+    assert date_text("2026.09.17 08:30") == "2026-09-17"
+
+
+def test_alternate_article_publication_meta():
+    item = Article('脑电耳机新品', 'https://example.org/news/one', '', '媒体')
+    metadata(item, '<meta name="parsely-pub-date" content="2026-09-17T08:30:00+08:00">'
+                   '<article>脑电耳机新品</article>')
+    assert item.published == '2026-09-17'
+    assert item.date_evidence == 'article_meta'
 
 
 def test_cards_keep_summary_without_borrowing_dates():

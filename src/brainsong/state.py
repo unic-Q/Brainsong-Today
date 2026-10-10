@@ -17,6 +17,7 @@ class State:
         CREATE INDEX IF NOT EXISTS article_date ON articles(published);
         CREATE TABLE IF NOT EXISTS candidate_inputs(
             id TEXT PRIMARY KEY, first_seen TEXT, last_seen TEXT, released TEXT, payload TEXT);
+        CREATE TABLE IF NOT EXISTS observed_candidates(id TEXT PRIMARY KEY, first_seen TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS delivered(alias TEXT PRIMARY KEY, day TEXT, status TEXT);
         CREATE TABLE IF NOT EXISTS policy_delivered(alias TEXT PRIMARY KEY, day TEXT, status TEXT);
         CREATE TABLE IF NOT EXISTS deleted_candidates(alias TEXT PRIMARY KEY);
@@ -25,6 +26,11 @@ class State:
         CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY, day TEXT, stage TEXT, detail TEXT);
         CREATE INDEX IF NOT EXISTS errors_date ON errors(day);
         """)
+        # Preserve first discovery across automatic candidate expiry. This is a
+        # lightweight identity ledger, not a copy of article text.
+        self.db.execute("""INSERT OR IGNORE INTO observed_candidates(id, first_seen)
+            SELECT id, first_seen FROM candidate_inputs WHERE first_seen IS NOT NULL""")
+        self.db.commit()
         check = self.db.execute("PRAGMA quick_check").fetchone()[0]
         if check != "ok":
             raise RuntimeError("历史数据库损坏，停止推送")
@@ -62,6 +68,9 @@ class State:
         for item in items:
             if self.deleted(item):
                 continue
+            if not item.published:
+                self.db.execute("INSERT OR IGNORE INTO observed_candidates VALUES (?,?)",
+                                (item.identity, str(today)))
             value = item.record()
             value['summary'] = value['source_summary']
             value['summary_kind'] = 'source'
@@ -94,7 +103,12 @@ class State:
         if self.deleted(item) or self.sent(item):
             return True
         return any(self.db.execute(f'SELECT 1 FROM {table} WHERE id=?', (item.identity,)).fetchone()
-                   for table in ('candidate_inputs', 'articles'))
+                   for table in ('observed_candidates', 'candidate_inputs', 'articles'))
+
+    def first_seen(self, item):
+        row = self.db.execute('SELECT first_seen FROM observed_candidates WHERE id=?',
+                              (item.identity,)).fetchone()
+        return row[0] if row else ''
 
     def deleted(self, item):
         return any(self.db.execute('SELECT 1 FROM deleted_candidates WHERE alias=?', (k,)).fetchone()
@@ -225,10 +239,8 @@ class State:
     def prune(self, today, candidate_days=30, *, drop_undated=False, use_first_reported=False):
         """Discard stale candidate material without removing delivery fingerprints."""
         def expired_candidate(item, first_seen=''):
-            if not item.published:
-                if drop_undated:
-                    return True
-                value = first_seen
+            if not item.published or item.date_evidence == 'recent_first_seen':
+                value = first_seen or self.first_seen(item) or item.first_reported
             else:
                 value = item.first_reported if use_first_reported and item.first_reported else item.published
             try:
@@ -243,12 +255,22 @@ class State:
         expired.extend(item for (payload,) in self.db.execute('SELECT payload FROM articles')
                        if (item := Article(**json.loads(payload))).published or drop_undated
                        if expired_candidate(item))
-        self.delete_candidates(expired)
+        # Explicit deletion and dated-out-of-window records keep the old
+        # permanent rejection policy. Missing dates may be resolved later, so
+        # their automatic expiry must never become a permanent rejection.
+        self.delete_candidates(item for item in expired
+                               if item.published and item.date_evidence != 'recent_first_seen')
+        undated_ids = {item.identity for item in expired
+                       if not item.published or item.date_evidence == 'recent_first_seen'}
+        with self.db:
+            for table in ('candidate_inputs', 'articles'):
+                self.db.executemany(f'DELETE FROM {table} WHERE id=?',
+                                    [(identity,) for identity in undated_ids])
         self.db.execute("DELETE FROM errors WHERE day<?", ((today-timedelta(days=90)).isoformat(),))
         self.db.execute("DELETE FROM delivered WHERE day<? AND status!='pending'", ((today-timedelta(days=365)).isoformat(),))
         cutoff = (today-timedelta(days=30)).isoformat()
         stale = []
-        for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'ai:%' OR key LIKE 'summary-v2:%' OR key LIKE 'summary-v3:%' OR key LIKE 'summary-v4:%' OR key LIKE 'summary-v5:%' OR key LIKE 'summary-v6:%' OR key LIKE 'headline-v1:%' OR key LIKE 'dedup:%'"):
+        for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'ai:%' OR key LIKE 'summary-v2:%' OR key LIKE 'summary-v3:%' OR key LIKE 'summary-v4:%' OR key LIKE 'summary-v5:%' OR key LIKE 'summary-v6:%' OR key LIKE 'headline-v1:%' OR key LIKE 'dedup:%' OR key LIKE 'launch-v1:%' OR key LIKE 'product-page-v1:%'"):
             if json.loads(value).get("day", "") < cutoff:
                 stale.append((key,))
         self.db.executemany("DELETE FROM kv WHERE key=?", stale)

@@ -162,10 +162,12 @@ def apply_assessment(item, row, scoring=None, policy_scope=None):
         item.accepted = False
     item.tags = [re.sub(r"[\[\]<>\n]", "", t)[:18] for t in row["tags"][:3]]
     item.score = business_score(item.matches, item.relevance)
+    # Launch detection happens only after a selected item's final summary has
+    # release wording; relevance assessment does not classify every article.
+    item.event_type = 'ordinary'
+    item.product_name = ''
+    item.product_url = ''
     evidence = item.title + ' ' + (item.summary or item.body)[:700]
-    quote = row.get('event_evidence', '')
-    event = row.get('event_type', 'ordinary')
-    item.event_type = event if event in {'policy', 'product', 'breakthrough', 'funding'} and isinstance(quote, str) and len(quote) >= 8 and quote in evidence else 'ordinary'
     kind = row.get('source_kind', 'secondary')
     item.source_kind = kind if kind in {'original', 'media', 'secondary', 'unknown'} else 'unknown'
     names = row.get('companies', [])
@@ -495,8 +497,10 @@ def render(items, today):
                   f"{'近期' if item.date_evidence == 'recent_first_seen' else item.published[:10]} · {tags}{flag}"]
         if item.summary:
             lines.append(escape(short_text(item.summary)))
-        lines += [
-                  f"（来源：{'、'.join(escape(n) for n in names[:5])}）[原文]({item.url.replace(')', '%29').replace('(', '%28')})", ""]
+        links = f"[原文]({item.url.replace(')', '%29').replace('(', '%28')})"
+        if item.event_type == 'product' and item.product_url:
+            links += f" [查看产品页]({item.product_url.replace(')', '%29').replace('(', '%28')})"
+        lines += [f"（来源：{'、'.join(escape(n) for n in names[:5])}）{links}", ""]
     body = "\n".join(lines).strip()
     if len(body) > 18000:
         raise ValueError("简报超长，禁止静默截断")

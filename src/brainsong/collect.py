@@ -19,7 +19,7 @@ from .model import Article, canonical, dictionary_result
 
 def date_text(text):
     text = str(text)
-    m = re.search(r"(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})", text)
+    m = re.search(r"(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})", text)
     if m:
         try:
             return date(*map(int, m.groups())).isoformat()
@@ -178,7 +178,9 @@ def metadata(item, html):
     for node in soup.select("meta[property],meta[name]"):
         key = node.get("property", node.get("name", "")).lower()
         value = node.get("content", "")
-        if key in {"article:published_time", "date", "pubdate", "publishdate", "pubtime", "dc.date.issued"}:
+        if key in {"article:published_time", "article:published", "date", "pubdate",
+                   "publishdate", "datepublished", "pubtime", "dc.date.issued",
+                   "citation_publication_date", "parsely-pub-date"}:
             found = date_text(value)
             if found:
                 item.published, item.date_evidence = found, 'article_meta'
