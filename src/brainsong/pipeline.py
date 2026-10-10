@@ -19,7 +19,8 @@ from .product_pages import detect_product_launches, enrich_product_pages
 from .secrets import api_key
 from .state import State
 from .progress import Progress
-from .acquisition import business_context, source_priority, date_priority, estimated_relevance
+from .acquisition import (business_context, business_signal_tier,
+                          source_priority, date_priority, estimated_relevance)
 
 
 def load(root):
@@ -322,6 +323,12 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
         available = [a for a in candidates if not full(a) or
                      replacement_counts[a.category] + sum(full(x) and x.category == a.category for x in result)
                      < cfg.get('max_replacement_candidates_per_category', 1)]
+        # This is a paid-analysis quota, never a cut on stored source articles.
+        # Once a publisher fills its normal share, only directly relevant
+        # brain/EEG evidence can earn an additional analysis slot.
+        available = [a for a in available if
+                     source_counts[source_key(a)] + sum(source_key(x) == source_key(a) for x in result) < source_limit
+                     or business_signal_tier(a, cfg) >= 3]
         if not available:
             break
         def priority(a):
@@ -336,6 +343,7 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
                     estimated_relevance(a, cfg) < 60,
                     analysis_counts[a.category] + sum(x.category == a.category for x in result),
                     direction_priority.get(a.category, 5),
+                    -business_signal_tier(a, cfg),
                     not (needs_read(a) and a.identity in trusted_undated_ids),
                     -recent,
                     -estimate(a), -source_priority(a, cfg), representation, evidence_level, a.identity)
@@ -369,7 +377,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     def estimate(item):
         weight = estimated_relevance(item, cfg)
         return weight * (freshness_factor(item, today, scoring) if item.published else 0)
-    queue.sort(key=lambda a: (a.exploration, -estimate(a),
+    queue.sort(key=lambda a: (a.exploration, -business_signal_tier(a, cfg), -estimate(a),
                              a.category == '学术', a.category != '政策', a.identity))
     counts = state.get('counts', {'total': 0, 'exploration': 0})
     allowance = int((counts['total'] + cfg['max_items']) * cfg['exploration_ratio']) - counts['exploration']
@@ -470,6 +478,12 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                     and not (cfg.get('reject_aggregate_pages', False) and aggregate_page(item))
                     and active_window(item, cfg, today)):
                 batch.append(item)
+        # Missing/expired dates were inspected but never reached paid
+        # relevance analysis, so they must not consume a publisher's AI share.
+        analysable_ids = {item.identity for item in batch}
+        for item in raw:
+            if item.identity not in analysable_ids:
+                source_counts[source_key(item)] -= 1
         analysed += len(batch)
         accepted.extend(relevance_filter(batch, provider, cfg, rules, state, today) if ai
                         else [a for a in batch if a.accepted])

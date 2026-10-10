@@ -119,6 +119,25 @@ def test_single_source_is_deprioritized_before_paid_analysis():
     assert sum(source_counts.values()) == 4
 
 
+def test_single_source_quota_blocks_weak_overflow_but_not_direct_eeg():
+    weak = [Article(f'课堂耳机支持听觉训练{i}', f'https://alpha.example.org/{i}',
+                    str(DAY), '甲媒体', category='行业') for i in range(8)]
+    other = [Article(f'课堂耳机支持听觉训练B{i}', f'https://beta.example.org/{i}',
+                     str(DAY), '乙媒体', category='行业') for i in range(2)]
+    direct = Article('脑电耳机新品发布', 'https://alpha.example.org/direct',
+                     str(DAY), '甲媒体', category='行业')
+    counts = Counter()
+    cfg = {'max_analysis_candidates': 8, 'max_source_share': .25}
+    chosen = pipeline.direction_batch(weak + other, [], cfg, lambda _: 80, 8,
+                                      source_counts=counts)
+    assert len(chosen) == 4
+    assert sum(item.url.startswith('https://alpha.') for item in chosen) == 2
+    assert len(weak + other) == 10  # Candidates are not truncated or removed.
+    next_batch = pipeline.direction_batch([direct], [], cfg, lambda _: 95, 1,
+                                          source_counts=counts)
+    assert next_batch == [direct]
+
+
 def test_full_direction_gets_only_one_clear_replacement_check():
     picks = [make_item(i, '学术') for i in range(3)]
     papers = [make_item(i+10, '学术') for i in range(5)]

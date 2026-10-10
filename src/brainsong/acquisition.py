@@ -2,6 +2,7 @@
 import re
 from datetime import date
 from dataclasses import replace
+from urllib.parse import urlsplit
 from .model import company_keys, source_factor
 
 CORE = re.compile(r'脑机|脑电|神经数据|神经接口|耳周|耳部电极|干电极|生物电|神经反馈|\b(?:eeg|bci|ecog)\b|electroencephal|brain.computer|brain.machine|neural (?:data|signal|interface)|ear.eeg|neurofeedback|dry electrode', re.I)
@@ -10,24 +11,52 @@ GLASSES = re.compile(r'AI\s*眼镜|智能眼镜|脑电眼镜|眼电眼镜|\b(?:A
 WEARABLE = re.compile(r'AI可穿戴|智能可穿戴|\bAI\s+wearables?\b', re.I)
 BIOSIGNAL = re.compile(r'脑电|神经反馈|生理信号|生物电|认知|睡眠|情绪|\b(?:EEG|EOG|biosignal|neurofeedback)\b', re.I)
 APPLICATION = re.compile(r'教育|课堂|教学|听觉训练|学习|睡眠|情绪|新品|发布|降噪|眼动|眼控|交互|视障|无障碍|education|classroom|learning|sleep|emotion|launch|release|noise.cancel|eye.tracking|interaction', re.I)
+TARGET_APPLICATION = re.compile(
+    r'教育|课堂|教学|听觉训练|学习|专注|注意力|睡眠|情绪|情感|认知|眼动|眼控|视障|无障碍|'
+    r'education|classroom|learning|attention|sleep|emotion|affective|cognitive|'
+    r'eye.tracking|accessib', re.I)
 EVENT = re.compile(r'发布|新品|研发|融资|收购|并购|任命|聘|更新|研究|产品|平台|数据|设备|传感|launch|release|funding|rais|appoint|sdk|studio|update|data|sensor|research|product', re.I)
 
 
-def business_context(item, cfg):
+def business_signal_tier(item, cfg):
+    """Rank the article's business evidence, not its feed position or publisher."""
     text = item.title + ' ' + (item.source_summary or item.summary)[:2000] + ' ' + item.body[:1000]
     if CORE.search(text):
-        return True
-    if AUDIO.search(text) and APPLICATION.search(text):
-        return True
+        return 3
+    if AUDIO.search(text) and TARGET_APPLICATION.search(text):
+        return 2
     if GLASSES.search(text) and (APPLICATION.search(text) or EVENT.search(text)):
-        return True
+        return 2
     if WEARABLE.search(text) and BIOSIGNAL.search(text):
-        return True
-    if company_keys(item, cfg.get('scoring', {})) and EVENT.search(text):
-        return True
+        return 2
+    # Companies inferred by an earlier AI pass are not source evidence for a
+    # later cheap gate; use the headline and source excerpt only.
+    companies = company_keys(replace(item, companies=[]), cfg.get('scoring', {}))
+    broad = {name.casefold() for name in cfg.get('acquisition', {}).get('broad_company_names', [])}
+    ambiguous = {name.casefold() for name in cfg.get('acquisition', {}).get(
+        'ambiguous_company_names', [])}
+    if companies - broad - ambiguous and EVENT.search(text):
+        return 2
+    if companies & ambiguous and EVENT.search(text):
+        host = (urlsplit(item.url).hostname or '').lower()
+        domains = cfg.get('acquisition', {}).get('ambiguous_company_domains', {})
+        official = any(company.casefold() in companies and
+                       any(host == domain or host.endswith('.' + domain)
+                           for domain in hosts)
+                       for company, hosts in domains.items())
+        distinctive = any(name.casefold() in item.title.casefold()
+                          for name in cfg.get('acquisition', {}).get('distinct_company_names', []))
+        if official or distinctive:
+            return 2
     # Exploration requires an explicit adjacent application, never merely a new name.
-    return bool(item.exploration and re.search(r'可穿戴|wearable', text, re.I)
-                and re.search(r'生物传感|柔性|睡眠|情绪|生理|biosens|flexible|sleep|emotion|physiolog', text, re.I))
+    if (item.exploration and re.search(r'可穿戴|wearable', text, re.I)
+            and re.search(r'生物传感|柔性|睡眠|情绪|生理|biosens|flexible|sleep|emotion|physiolog', text, re.I)):
+        return 1
+    return 0
+
+
+def business_context(item, cfg):
+    return business_signal_tier(item, cfg) > 0
 
 
 def source_priority(item, cfg):
