@@ -1,7 +1,7 @@
 from datetime import date
 from pathlib import Path
 
-from brainsong.acquisition import business_context, estimated_relevance
+from brainsong.acquisition import business_context, business_signal_tier, estimated_relevance
 from brainsong.editor import prepare, category_hint, select, relevance_filter
 from brainsong.pipeline import load, direction_batch
 from brainsong.model import Article
@@ -25,6 +25,39 @@ def test_business_gate_blocks_unrelated_despite_complete_evidence():
         a=item(title)
         prepare(a,policy['rules'],policy['exclude'])
         assert business_context(a,cfg)
+
+
+def test_broad_brand_announcement_needs_product_or_use_case_evidence():
+    cfg, policy, _ = load(ROOT)
+    cases = [
+        ('苹果发布新款手机', False),
+        ('索尼公布游戏直播互动专利', False),
+        ('Meta发布Muse智能助手新品', False),
+        ('苹果发布AI眼镜课堂听觉辅助功能', True),
+        ('索尼发布脑电耳机新品', True),
+        ('BrainCo发布新版脑电数据接口', True),
+    ]
+    for title, expected in cases:
+        article = item(title)
+        prepare(article, policy['rules'], policy['exclude'])
+        assert business_context(article, cfg) is expected
+    direct = item('脑电眼镜发布信号接口')
+    adjacent = item('AI眼镜发布课堂听觉辅助功能')
+    assert business_signal_tier(direct, cfg) > business_signal_tier(adjacent, cfg)
+    contaminated = item('普通手机新品发布')
+    contaminated.companies = ['BrainCo']  # Prior AI output cannot create new source evidence.
+    assert not business_context(contaminated, cfg)
+
+
+def test_late_feed_article_with_direct_signal_beats_earlier_generic_brand_news():
+    cfg, policy, _ = load(ROOT)
+    rows = [item(f'苹果发布新款手机{i}', f'https://ithome.com/{i}') for i in range(40)]
+    rows.append(item('消费级脑电耳机发布教育数据接口', 'https://ithome.com/late'))
+    for article in rows:
+        prepare(article, policy['rules'], policy['exclude'])
+    eligible = [article for article in rows if business_context(article, cfg)]
+    assert eligible == [rows[-1]]
+    assert direction_batch(eligible, [], cfg, lambda _: 80, 1) == [rows[-1]]
 
 
 def test_quality_and_authority_outrank_evidence_convenience():

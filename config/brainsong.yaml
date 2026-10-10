@@ -27,6 +27,15 @@ relevance_examples:
   - {text: '普通智能手表增加AI表盘，没有脑电或教育睡眠情绪应用', score: 0}
 acquisition:
   recency_first: true
+  # Broad consumer-electronics brands need a product/form-factor/use-case
+  # signal; a routine company announcement alone does not spend AI budget.
+  broad_company_names: [Apple, Sony]
+  ambiguous_company_names: [Muse, Nimbus, BrainFlow]
+  distinct_company_names: [Nimbus Studio, InteraXon]
+  ambiguous_company_domains:
+    Muse: [choosemuse.com]
+    Nimbus: [nimbusbci.com]
+    BrainFlow: [brainflow.org]
   # Acquisition estimates only, never final relevance scores or hard rejection rules.
   priority_hints:
     - {all: ['脑电|EEG|electroencephal', '情绪识别|情感识别|情感计算|emotion recognition|affective computing|emotion decoding'], score: 85}
