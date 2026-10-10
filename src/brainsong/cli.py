@@ -19,7 +19,7 @@ def main():
     parser.add_argument("--state")
     parser.add_argument("--resume", action="store_true", help="复用候选缓存，执行配置中的定向补搜，不重抓信源列表")
     parser.add_argument("--cached-only", action="store_true", help="只补分析缓存候选，不执行信源列表采集或常规搜索")
-    parser.add_argument("--prune-only", action="store_true", help="只清理过期及无日期候选，不搜索、不推送")
+    parser.add_argument("--prune-only", action="store_true", help="只清理过期候选（无日期按首次发现时间），不搜索、不推送")
     args = parser.parse_args()
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     # Actions cancellation sends SIGINT then SIGTERM. Unwind the pipeline's

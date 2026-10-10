@@ -49,12 +49,13 @@ def test_undated_and_policy_candidates_expire_but_delivery_history_remains(tmp_p
     state.retain_candidates([a,b],day)
     state.mark([b],day,'sent')
     state.prune(day+timedelta(days=30))
-    assert not state.candidates() and state.deleted(a) and state.deleted(b)
+    assert not state.candidates() and not state.deleted(a) and state.deleted(b)
+    assert state.ever_seen(a)
     assert state.sent(b)
     state.close()
 
 
-def test_three_day_prune_removes_old_and_undated_copies_before_next_run(tmp_path):
+def test_three_day_prune_keeps_recent_undated_and_removes_old_copies(tmp_path):
     state = State(tmp_path / 'three-day.db')
     today = date(2026, 9, 29)
     current = Article('今日脑电耳机发布', 'https://example.org/current', '2026-09-29', '媒体')
@@ -68,10 +69,11 @@ def test_three_day_prune_removes_old_and_undated_copies_before_next_run(tmp_path
 
     state.prune(today, 3, drop_undated=True, use_first_reported=True)
 
-    assert {item.identity for item in state.candidates()} == {current.identity, boundary.identity}
-    assert state.deleted(old) and state.deleted(undated)
+    assert {item.identity for item in state.candidates()} == {
+        current.identity, boundary.identity, undated.identity}
+    assert state.deleted(old) and not state.deleted(undated)
     assert state.sent(old)
-    assert state.cached(old) is None and state.cached(undated) is None
+    assert state.cached(old) is None and state.cached(undated) is not None
     state.close()
 
 
@@ -97,7 +99,7 @@ def test_prune_only_cli_does_not_collect_or_send(tmp_path, monkeypatch, capsys):
     db = tmp_path / 'maintenance.db'
     state = State(db)
     undated = Article('无日期脑电候选', 'https://example.org/no-date', '', '媒体')
-    state.retain_candidates([undated], today)
+    state.retain_candidates([undated], today - timedelta(days=3))
     state.close()
     monkeypatch.setattr(cli, 'run', lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError('maintenance must not collect or send')))
@@ -107,7 +109,41 @@ def test_prune_only_cli_does_not_collect_or_send(tmp_path, monkeypatch, capsys):
     cli.main()
     assert '"removed": 1' in capsys.readouterr().out
     state = State(db)
-    assert not state.candidates() and state.deleted(undated)
+    assert not state.candidates() and not state.deleted(undated)
+    assert state.ever_seen(undated)
+    state.close()
+
+
+def test_expired_undated_can_gain_verified_date_without_becoming_new(tmp_path):
+    state = State(tmp_path / 'date-recovery.db')
+    first = date(2026, 9, 20)
+    item = Article('脑电新品发布', 'https://example.org/news/new', '', '媒体')
+    state.retain_candidates([item], first)
+    state.prune(first + timedelta(days=3), 3, drop_undated=True)
+    assert not state.candidates()
+    assert state.ever_seen(item) and not state.deleted(item)
+    assert state.first_seen(item) == first.isoformat()
+    item.published = '2026-09-23'
+    item.date_evidence = 'article_meta'
+    state.retain_candidates([item], first + timedelta(days=3))
+    assert state.candidates()[0].published == '2026-09-23'
+    state.close()
+
+
+def test_recent_first_seen_proxy_expires_without_permanent_rejection(tmp_path):
+    state = State(tmp_path / 'proxy-expiry.db')
+    first = date(2026, 9, 20)
+    item = Article('脑电产品新消息', 'https://example.org/news/undated', '', '媒体')
+    state.retain_candidates([item], first)
+    item.published = first.isoformat()
+    item.first_reported = first.isoformat()
+    item.date_evidence = 'recent_first_seen'
+    state.retain_candidates([item], first)
+    state.save(item)
+    state.prune(first + timedelta(days=3), 3, drop_undated=True,
+                use_first_reported=True)
+    assert not state.candidates() and state.cached(item) is None
+    assert not state.deleted(item) and state.ever_seen(item)
     state.close()
 
 

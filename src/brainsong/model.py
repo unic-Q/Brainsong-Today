@@ -190,6 +190,8 @@ class Article:
     source_excerpt: str = ""
     summary_version: str = ""
     event_type: str = 'ordinary'
+    product_name: str = ''
+    product_url: str = ''
     source_kind: str = 'secondary'
     companies: list[str] = field(default_factory=list)
     first_reported: str = ''

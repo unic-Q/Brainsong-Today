@@ -47,7 +47,7 @@ def test_first_seen_fallback_only_after_reading_original(tmp_path, monkeypatch, 
     monkeypatch.setattr(pipeline, 'finish_item', lambda *args, **kwargs: True)
     _, picks = pipeline.process_candidates([item], cfg, policy['rules'], policy['exclude'],
         state, object(), reader, DAY, Progress(tmp_path / 'progress.log'),
-        recent_undated_ids={item.identity})
+        recent_undated_ids={item.identity: DAY.isoformat()})
     assert reader.calls == 1
     assert len(picks) == 1
     assert picks[0].date_evidence == ('recent_first_seen' if expected_label == '近期' else 'article_meta')
@@ -82,6 +82,53 @@ def test_undated_global_search_and_policy_sources_not_opted_in():
     assert not any(source['kind'] == 'search' or source['category'] == '政策'
                    or source['kind'] == 'arxiv' for source in sources
                    if source.get('allow_recent_without_date'))
+
+
+def test_curated_html_first_seen_covers_unlisted_sites_but_not_search_or_policy(tmp_path):
+    state = State(tmp_path / 'state.sqlite3')
+    item = Article('耳部脑电新产品', 'https://example.org/news/first', '', '固定媒体',
+                   date_evidence='no_date_hint')
+    website = {'kind': 'html', 'category': '行业', 'enabled': True}
+    assert pipeline.trusted_first_seen([item], website, state, DAY, 3) == {
+        item.identity: DAY.isoformat()}
+    state.retain_candidates([item], DAY)
+    next_day = date(2026, 9, 30)
+    assert pipeline.trusted_first_seen([item], website, state, next_day, 3) == {
+        item.identity: DAY.isoformat()}
+    assert not pipeline.trusted_first_seen([item], {'kind': 'search', 'category': '行业'},
+                                           state, next_day, 3)
+    assert not pipeline.trusted_first_seen([item], {'kind': 'html', 'category': '政策'},
+                                           state, next_day, 3)
+    assert not pipeline.trusted_first_seen([item], website, state, date(2026, 10, 2), 3)
+    state.close()
+
+
+def test_first_seen_remains_original_day_when_date_read_is_deferred(tmp_path, monkeypatch):
+    cfg, policy, _ = pipeline.load(ROOT)
+    first = DAY
+    next_day = date(2026, 9, 30)
+    item = Article('脑电耳机新品融资', 'https://trusted.example/news/deferred', '', '定向站',
+                   '一家企业发布脑电耳机，支持睡眠分析。', date_evidence='no_date_hint')
+    state = State(tmp_path / 'state.sqlite3')
+    state.retain_candidates([item], first)
+    assert state.first_seen(item) == first.isoformat()
+    reader = Reader('<article>一家企业发布脑电耳机，支持睡眠分析。</article>')
+
+    def assess(batch, *args):
+        for article in batch:
+            article.accepted, article.relevance = True, 90
+        return batch
+
+    monkeypatch.setattr(pipeline, 'relevance_filter', assess)
+    monkeypatch.setattr(pipeline, 'merge_event_reports', lambda items, *args: items)
+    monkeypatch.setattr(pipeline, 'finish_item', lambda *args, **kwargs: True)
+    _, picks = pipeline.process_candidates([item], cfg, policy['rules'], policy['exclude'],
+        state, object(), reader, next_day, Progress(tmp_path / 'progress.log'),
+        recent_undated_ids={item.identity: first.isoformat()})
+    assert picks[0].date_evidence == 'recent_first_seen'
+    assert picks[0].first_reported == first.isoformat()
+    assert '近期' in render(picks, next_day)[1]
+    state.close()
 
 
 def test_ai_receives_discovery_date_separately_from_publication_date(tmp_path):

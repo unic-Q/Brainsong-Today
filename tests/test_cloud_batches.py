@@ -70,7 +70,8 @@ def test_many_unknown_dates_cannot_starve_ready_news(tmp_path, monkeypatch):
     assert set(assessed).issubset({a.identity for a in ready})
     assert len(state.candidates()) == 69
     state.prune(DAY, 3, drop_undated=True)
-    assert {a.identity for a in state.candidates()} == {a.identity for a in ready}
+    assert len(state.candidates()) == 69  # Undated evidence stays available within the window.
+    assert not any(state.deleted(a) for a in missing)
     state.close()
 
 
