@@ -292,7 +292,7 @@ def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
 
 def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploration_due=False,
                     analysis_counts=None, replacement_counts=None, source_counts=None,
-                    trusted_undated_ids=None):
+                    trusted_undated_ids=None, allow_source_overflow=False):
     """Recent business-relevant evidence first; convenience cannot outrank value."""
     analysis_counts = analysis_counts if analysis_counts is not None else Counter()
     replacement_counts = replacement_counts if replacement_counts is not None else Counter()
@@ -326,9 +326,10 @@ def direction_batch(queue, picks, cfg, estimate, size, can_read=True, exploratio
         # This is a paid-analysis quota, never a cut on stored source articles.
         # Once a publisher fills its normal share, only directly relevant
         # brain/EEG evidence can earn an additional analysis slot.
-        available = [a for a in available if
-                     source_counts[source_key(a)] + sum(source_key(x) == source_key(a) for x in result) < source_limit
-                     or business_signal_tier(a, cfg) >= 3]
+        if not allow_source_overflow:
+            available = [a for a in available if
+                         source_counts[source_key(a)] + sum(source_key(x) == source_key(a) for x in result) < source_limit
+                         or business_signal_tier(a, cfg) >= 3]
         if not available:
             break
         def priority(a):
@@ -398,12 +399,19 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     analysis_counts, replacement_counts, source_counts = Counter(), Counter(), Counter()
     remaining = list(queue)
     budget = cfg.get('max_analysis_candidates', 36)
+    refill_analysis_limit = max(budget, cfg.get('max_refill_analysis_candidates', budget * 2))
+    metadata_limit = cfg.get('max_metadata_reads', 12)
+    refill_metadata_limit = max(metadata_limit, cfg.get('max_refill_metadata_reads', metadata_limit * 3))
+    allow_source_overflow = False
     refill_logged = False
     while remaining:
         if analysed >= budget and len(picks) < cfg['max_items'] and not refill_logged:
             progress('analysis refill', ready=len(picks), deferred=len(remaining))
             refill_logged = True
         if analysed >= budget and len(picks) >= cfg['max_items']:
+            break
+        if analysed >= refill_analysis_limit:
+            progress('refill analysis safety limit', ready=len(picks), deferred=len(remaining))
             break
         qualified = [a for a in accepted if a.identity not in rejected]
         have_ten = len(qualified) >= cfg.get('shortlist_items', 10)
@@ -418,12 +426,21 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         else:
             available = remaining
         raw = direction_batch(available, picks, cfg, estimate, batch_size,
-                              can_read=offline or metadata_reads < cfg.get('max_metadata_reads', 12),
+                              can_read=offline or metadata_reads < metadata_limit,
                               exploration_due=allowance > 0 and not any(a.exploration for a in picks),
                               analysis_counts=analysis_counts, replacement_counts=replacement_counts,
                               source_counts=source_counts,
-                              trusted_undated_ids=set(recent_undated_ids))
+                              trusted_undated_ids=set(recent_undated_ids),
+                              allow_source_overflow=allow_source_overflow)
         if not raw:
+            if len(picks) < cfg['max_items'] and not allow_source_overflow:
+                allow_source_overflow = True
+                progress('refill source share relaxed', ready=len(picks), deferred=len(remaining))
+                continue
+            if len(picks) < cfg['max_items'] and metadata_limit < refill_metadata_limit:
+                metadata_limit = refill_metadata_limit
+                progress('refill metadata budget expanded', limit=metadata_limit, deferred=len(remaining))
+                continue
             progress('no eligible refill within evidence and quota limits', ready=len(picks))
             break
         chosen_ids = {a.identity for a in raw}
@@ -432,9 +449,9 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         progress('batch start', inspected=cursor, analysed=analysed, total=len(queue), ready=len(picks))
         batch = []
         for offset, item in enumerate(raw, 1):
-            if not offline and ((not item.published and item.matches) or
+            if not offline and ((not item.published) or
                                 (item.published and not usable_summary(item.summary, item.title) and not item.body)):
-                if metadata_reads >= cfg.get('max_metadata_reads', 12):
+                if metadata_reads >= metadata_limit:
                     progress('article deferred metadata budget')
                     continue
                 metadata_reads += 1

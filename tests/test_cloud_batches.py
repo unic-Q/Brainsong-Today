@@ -227,6 +227,50 @@ def test_analysis_continues_past_initial_budget_when_fewer_than_seven_selected(t
     state.close()
 
 
+def test_short_report_refills_from_source_overflow(tmp_path, monkeypatch):
+    # The normal publisher share should balance the first batches, not strand
+    # otherwise eligible articles when no other publishers can fill the brief.
+    monkeypatch.setattr(pipeline, 'business_signal_tier', lambda item, cfg: 2)
+    state, assessed, _, picks = run_batch(
+        tmp_path, monkeypatch, [make_item(i) for i in range(12)],
+        cfg_updates={'max_analysis_candidates': 4, 'max_source_share': .25})
+    assert len(picks) == 7
+    assert len(assessed) >= 7
+    assert 'refill source share relaxed' in (tmp_path / 'progress.log').read_text(encoding='utf-8')
+    state.close()
+
+
+def test_short_report_refills_from_undated_article_reads(tmp_path, monkeypatch):
+    cfg, policy, _ = pipeline.load(ROOT)
+    cfg.update(max_metadata_reads=1, max_refill_metadata_reads=12)
+    state = State(tmp_path / 'metadata-refill.db')
+    rows = [make_item(i, published='') for i in range(12)]
+    reads = []
+    class Reader:
+        def get(self, url):
+            reads.append(url)
+            return '<html>article</html>'
+    def metadata(item, html):
+        item.published = str(DAY)
+        item.date_evidence = 'article'
+    def assess(batch, *args):
+        for item in batch:
+            item.accepted = True
+        return batch
+    monkeypatch.setattr(pipeline, 'metadata', metadata)
+    monkeypatch.setattr(pipeline, 'relevance_filter', assess)
+    monkeypatch.setattr(pipeline, 'merge_event_reports', lambda items, *args: items)
+    monkeypatch.setattr(pipeline, 'finish_item', lambda *args, **kwargs: True)
+    _, picks = pipeline.process_candidates(
+        rows, cfg, policy['rules'], policy['exclude'], state, object(), Reader(), DAY,
+        Progress(tmp_path / 'metadata-refill.log'))
+    assert len(picks) == 7
+    assert len(reads) >= 7
+    assert 'refill metadata budget expanded' in (
+        tmp_path / 'metadata-refill.log').read_text(encoding='utf-8')
+    state.close()
+
+
 def test_academic_cap_survives_batches(tmp_path, monkeypatch):
     items = [make_item(i, '学术') for i in range(12)] + [make_item(i+30) for i in range(15)]
     state, _, _, picks = run_batch(tmp_path, monkeypatch, items)

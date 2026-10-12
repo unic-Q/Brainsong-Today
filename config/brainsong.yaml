@@ -60,8 +60,10 @@ max_academic_items: 2
 max_category_items: 3
 max_company_items: 2
 max_analysis_candidates: 48
+max_refill_analysis_candidates: 96
 max_source_share: 0.25
 max_metadata_reads: 12
+max_refill_metadata_reads: 48
 max_extra_batches: 1
 policy_scope: china
 max_replacement_candidates_per_category: 1
