@@ -59,6 +59,7 @@ shortlist_items: 10
 max_academic_items: 2
 max_category_items: 3
 max_company_items: 2
+cross_day_dedup_days: 60
 max_analysis_candidates: 48
 max_refill_analysis_candidates: 96
 max_source_share: 0.25
@@ -93,6 +94,8 @@ scoring:
     stcn.com: [85, 85]
     36kr.com: [80, 85]
     ithome.com: [80, 80]
+    pedaily.cn: [80, 75]
+    junhe.com: [85, 60]
     bciwiki.com: [70, 50]
   freshness: [[1, 1.0], [3, 0.8], [7, 0.45], [14, 0.2], [30, 0.05]]
   company_aliases:

@@ -39,7 +39,7 @@ def dictionary_result(url: str) -> bool:
 def freshness_factor(item, today: date, scoring=None) -> float:
     """Calendar-day tiers; date-only sources cannot support exact 24h ages."""
     try:
-        age = (today - date.fromisoformat((item.first_reported or item.published)[:10])).days
+        age = (today - date.fromisoformat((item.event_date or item.first_reported or item.published)[:10])).days
     except ValueError:
         return 0.0
     if not 0 <= age < 30:
@@ -52,6 +52,10 @@ def freshness_factor(item, today: date, scoring=None) -> float:
 
 def source_factor(item, scoring=None):
     scoring = scoring or {}
+    if item.source_authority is not None and item.source_recognition is not None:
+        weights = scoring.get('source_weights', {'authority': .7, 'recognition': .3})
+        return (item.source_authority * weights['authority']
+                + item.source_recognition * weights['recognition']) / 100
     host = (urlsplit(item.url).hostname or '').lower()
     ratings = scoring.get('source_reputation', {'original':[85,60], 'media':[80,70], 'secondary':[60,50], 'unknown':[0,0]})
     authority, recognition = ratings.get(item.source_kind, [0,0])
@@ -201,6 +205,10 @@ class Article:
     first_submitted: str = ''
     last_revised: str = ''
     arxiv_version: str = ''
+    event_date: str = ''
+    source_authority: float | None = None
+    source_recognition: float | None = None
+    content_verified: bool = False
 
     def __post_init__(self):
         self.url = canonical(self.url)
@@ -232,7 +240,7 @@ class Article:
 
     def in_window(self, today: date, windows: dict, use_first_reported=False) -> bool:
         try:
-            value = self.first_reported if use_first_reported and self.first_reported else self.published
+            value = (self.event_date or self.first_reported or self.published) if use_first_reported else self.published
             age = (today - date.fromisoformat(value[:10])).days
             return 0 <= age < windows[self.category]
         except (ValueError, KeyError):

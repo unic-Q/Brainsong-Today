@@ -15,6 +15,19 @@ ROOT = Path(__file__).resolve().parents[1]
 DAY = date(2026, 9, 29)
 
 
+@pytest.fixture(autouse=True)
+def isolate_first_seen_from_finalist_review(monkeypatch):
+    # These tests cover the first page read and its fallback date.  The final
+    # editorial review has separate tests and need not repeat this read.
+    def verified(item, *args, **kwargs):
+        item.content_verified = True
+        # Isolate the legacy first-seen display path. Production verification
+        # separately requires a page-supported event date before sending.
+        item.event_date = '' if item.date_evidence == 'recent_first_seen' else item.published
+        return True
+    monkeypatch.setattr(pipeline, 'verify_finalist', verified)
+
+
 class Reader:
     def __init__(self, html):
         self.html = html

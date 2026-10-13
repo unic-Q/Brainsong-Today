@@ -21,6 +21,9 @@ from .state import State
 from .progress import Progress
 from .acquisition import (business_context, business_signal_tier,
                           source_priority, date_priority, estimated_relevance)
+from .authority import attach as attach_source_authority
+from .verification import verify_finalist
+from .repeat_guard import previously_covered
 
 
 def load(root):
@@ -66,6 +69,8 @@ def load(root):
         value = cfg.get(key, maximum)
         if type(value) is not int or not 1 <= value <= maximum:
             raise ValueError('配额配置超出范围: ' + key)
+    if type(cfg.get('cross_day_dedup_days')) is not int or not 7 <= cfg['cross_day_dedup_days'] <= 180:
+        raise ValueError('跨天去重窗口必须为7至180天')
     replacements = cfg.get('max_replacement_candidates_per_category', 1)
     if type(replacements) is not int or not 0 <= replacements <= 2:
         raise ValueError('每类替换分析名额必须为0至2')
@@ -264,7 +269,7 @@ def aggregate_page(item):
 
 
 def finish_item(item, cfg, state, provider, reader, today, *, offline, no_ai):
-    if not offline and not usable_summary(item.summary, item.title) and len(item.body) < cfg['short_body_chars']:
+    if not offline and not item.content_verified and not usable_summary(item.summary, item.title) and len(item.body) < cfg['short_body_chars']:
         try:
             extras = from_search(provider.search(item.title[:70]))
             compatible = [a for a in merge([item] + extras) if a.url == item.url]
@@ -367,8 +372,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
     pool = merge([a for a in items if not state.deleted(a) and verified_arxiv_date(a)])
     queue = []
     for item in pool:
-        if (not prepare(item, rules, exclusions) or state.sent(item) or not business_context(item, cfg)
-                or (cfg.get('reject_aggregate_pages', False) and aggregate_page(item))):
+        if (not prepare(item, rules, exclusions) or state.sent(item) or not business_context(item, cfg)):
             continue
         # Dates already known to be outside the window need no page request.
         if item.published and not active_window(item, cfg, today):
@@ -391,9 +395,9 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             queue.insert(0, discovery)
     progress('candidate queue', retained=len(pool), eligible=len(queue))
     ai = cfg['ai']['enabled'] and not offline and not no_ai
-    history = [a for a in state.recent(today, cfg['lookback_days']) if a.accepted and
-               active_window(a, cfg, today) and state.sent(a)] if ai else []
-    accepted, picks, rejected = [], [], set()
+    history = state.recent_sent_events(today, cfg.get('cross_day_dedup_days', 60)) if ai else []
+    accepted, picks, rejected, summary_failed = [], [], set(), set()
+    verification_counts = Counter()
     batch_size = min(6, max(1, cfg['ai']['batch_size']))
     cursor = analysed = extra_batches = metadata_reads = 0
     analysis_counts, replacement_counts, source_counts = Counter(), Counter(), Counter()
@@ -492,7 +496,6 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                 state.error(today, '文章日期:' + item.url, 'missing_date')
                 continue
             if (prepare(item, rules, exclusions) and business_context(item, cfg)
-                    and not (cfg.get('reject_aggregate_pages', False) and aggregate_page(item))
                     and active_window(item, cfg, today)):
                 batch.append(item)
         # Missing/expired dates were inspected but never reached paid
@@ -504,14 +507,36 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
         analysed += len(batch)
         accepted.extend(relevance_filter(batch, provider, cfg, rules, state, today) if ai
                         else [a for a in batch if a.accepted])
+        # Spend full-page checks only on the current leading ten candidates.
+        # Refill with the next ten if any page or event fails verification.
+        finalists = [a for a in accepted if a.identity not in rejected and not a.content_verified]
+        finalists.sort(key=lambda a: (shortlist_score(a, today, scoring),
+                                     estimated_relevance(a, cfg), a.identity), reverse=True)
+        for item in finalists[:cfg.get('shortlist_items', 10)]:
+            verification_counts['checked'] += 1
+            if not verify_finalist(item, reader, provider, state, today, offline=offline or no_ai):
+                verification_counts['unreadable_or_unverifiable'] += 1
+                rejected.add(item.identity)
+                continue
+            if not active_window(item, cfg, today):
+                verification_counts['old_event'] += 1
+                rejected.add(item.identity)
+                progress('old event rejected')
+                continue
+            attach_source_authority(item, state, scoring, today)
+            if ai and previously_covered(item, history, provider, state, today):
+                verification_counts['previously_covered'] += 1
+                rejected.add(item.identity)
+                progress('already covered rejected')
         if ai and batch:
-            accepted = merge_event_reports(history + accepted, provider, state, today)
-            # History is only a duplicate reference, not a new output candidate.
-            accepted = [a for a in accepted if not state.sent(a)]
+            verified = [a for a in accepted if a.content_verified and a.identity not in rejected]
+            merged = merge_event_reports(verified, provider, state, today)
+            kept = {a.identity for a in merged}
+            rejected.update(a.identity for a in verified if a.identity not in kept)
         # Re-rank all assessed candidates, reusing valid summaries from earlier batches.
         picks = []
         while True:
-            selected = select([a for a in accepted if a.identity not in rejected], state, today, cfg)
+            selected = select([a for a in accepted if a.content_verified and a.identity not in rejected], state, today, cfg)
             if not selected:
                 picks = []
                 break
@@ -524,6 +549,7 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
                     state.save(item)
                 else:
                     rejected.add(item.identity)
+                    summary_failed.add(item.identity)
                     failed = True
             if not failed:
                 break
@@ -535,9 +561,13 @@ def process_candidates(items, cfg, rules, exclusions, state, provider, reader, t
             progress('direction ' + category, ready=sum(a.category == category for a in picks),
                      remaining_ready=sum(a.category == category and bool(a.published) and
                                          (usable_summary(a.summary, a.title) or bool(a.body)) for a in remaining))
-    picks = fill_link_only(picks, [a for a in accepted if a.identity in rejected], state, today, cfg)
+    picks = fill_link_only(picks, [a for a in accepted if a.content_verified and a.identity in summary_failed], state, today, cfg)
     progress('selection complete', inspected=cursor, analysed=analysed, deferred=len(remaining), ready=len(picks),
-             analysed_mix=','.join(f'{k}:{analysis_counts[k]}' for k in ('行业','资本','政策','学术')))
+             analysed_mix=','.join(f'{k}:{analysis_counts[k]}' for k in ('行业','资本','政策','学术')),
+             finalist_checked=verification_counts['checked'],
+             unreadable=verification_counts['unreadable_or_unverifiable'],
+             old_event=verification_counts['old_event'],
+             previously_covered=verification_counts['previously_covered'])
     return pool, picks
 
 
@@ -563,7 +593,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
     recent_undated_ids = {}
     try:
         state.prune(today, cfg['lookback_days'], drop_undated=True,
-                    use_first_reported=cfg.get('strict_event_freshness', False))
+                    use_first_reported=cfg.get('strict_event_freshness', False),
+                    event_days=cfg.get('cross_day_dedup_days', 60))
         if not offline and not provider.key and (cfg["ai"]["enabled"] or cfg["search_enabled"]):
             raise ValueError("未配置智谱官方密钥；请设置ZHIPU_API_KEY或迁移本机密钥")
         if offline:
@@ -687,6 +718,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                                                  stars=star_text(a.recommendation_score),
                                                                  ranking_score=ranking_score(a, today, cfg.get('scoring'))) for a in picks],
                                                   }, ensure_ascii=False, indent=2), encoding="utf-8")
+        state.export_source_authority(out / 'source_authority.csv')
         delivered = False
         if send and not picks:
             state.error(today, '无可发送内容', 'no_qualified_items')
@@ -705,6 +737,7 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                 result = FeishuPusher(webhook).send(title, body)
                 if result.success:
                     state.mark(picks, today, "sent")
+                    state.record_sent_events(picks, today)
                     state.put(delivery_key, "sent")
                     if os.getenv('DAILY_DELIVERY') == 'true':
                         state.put('daily-delivery:' + today.isoformat(), 'sent')
@@ -718,7 +751,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                     state.error(today, "飞书发送", "failed_or_uncertain_requires_review")
                     raise RuntimeError("飞书发送失败或状态未知，详见本地记录")
         state.prune(today, cfg['lookback_days'], drop_undated=True,
-                    use_first_reported=cfg.get('strict_event_freshness', False))
+                    use_first_reported=cfg.get('strict_event_freshness', False),
+                    event_days=cfg.get('cross_day_dedup_days', 60))
         logs = root / "logs"
         logs.mkdir(exist_ok=True)
         for observation in reader.observations:

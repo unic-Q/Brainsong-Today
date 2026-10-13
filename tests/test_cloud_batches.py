@@ -13,6 +13,17 @@ DAY = date(2026, 9, 18)
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def skip_page_verification_for_batch_quota_tests(monkeypatch):
+    # This module tests the quota/refill scheduler, not the separate finalist
+    # HTTP/date verification contract.
+    def verified(item, *args, **kwargs):
+        item.content_verified = True
+        item.event_date = item.published
+        return True
+    monkeypatch.setattr(pipeline, 'verify_finalist', verified)
+
+
 class NoNetwork:
     def get(self, url):
         pytest.fail('Unexpected page request: ' + url)
