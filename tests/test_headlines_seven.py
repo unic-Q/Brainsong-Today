@@ -55,6 +55,11 @@ def test_pipeline_replenishes_failed_summaries(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, 'relevance_filter', lambda items, *args: items)
     monkeypatch.setattr(pipeline, 'merge_event_reports', lambda items, *args: items)
     monkeypatch.setattr(pipeline, 'compact_title', lambda *args: None)
+    def verified(item, *args, **kwargs):
+        item.content_verified = True
+        item.event_date = item.published
+        return True
+    monkeypatch.setattr(pipeline, 'verify_finalist', verified)
     def summary(item, *args):
         if item.title.endswith(('0', '1')):
             item.summary = ''

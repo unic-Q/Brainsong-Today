@@ -246,7 +246,8 @@ def select(items, state, today, cfg):
         today, cfg["windows"], cfg.get('strict_event_freshness', False)) and not state.sent(a)]
     scoring = cfg.get('scoring', {})
     eligible = [a for a in eligible if shortlist_score(a, today, scoring) > 0 and ranking_score(a, today, scoring) > 0]
-    eligible.sort(key=lambda a: ((a.first_reported or a.published)[:10] if cfg.get('acquisition', {}).get('recency_first') else '',
+    eligible.sort(key=lambda a: ((a.event_date or a.first_reported or a.published)[:10]
+                                 if cfg.get('acquisition', {}).get('recency_first') else '',
                                 shortlist_score(a, today, scoring), a.published, a.identity), reverse=True)
     cap = min(7, cfg["max_items"])
     category_cap = cfg.get('max_category_items', 3)
@@ -457,6 +458,8 @@ def compact_title(item, provider, state, today):
     40 characters only triggers editing. It is not an output length limit and
     never shares the summary's 100-character budget.
     """
+    if item.display_title:
+        return
     if len(item.title) <= 40:
         item.display_title = item.title
         return
@@ -494,7 +497,7 @@ def render(items, today):
         names = list(dict.fromkeys(s["name"] for s in item.sources))
         lines += [f"**{n}. [{item.category}] {escape(item.display_title or item.title)}**",
                   '推荐指数：' + star_text(item.recommendation_score if item.recommendation_score is not None else ranking_score(item, today)),
-                  f"{'近期' if item.date_evidence == 'recent_first_seen' else item.published[:10]} · {tags}{flag}"]
+                  f"{item.event_date or ('近期' if item.date_evidence == 'recent_first_seen' else item.published[:10])} · {tags}{flag}"]
         if item.summary:
             lines.append(escape(short_text(item.summary)))
         links = f"[原文]({item.url.replace(')', '%29').replace('(', '%28')})"
