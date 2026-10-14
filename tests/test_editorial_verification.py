@@ -130,7 +130,7 @@ def test_unreadable_wechat_search_hit_is_not_passed_as_full_text(tmp_path):
     state.close()
 
 
-def test_recent_search_date_cannot_replace_missing_event_date(tmp_path):
+def test_recent_page_without_event_date_keeps_its_publication_date(tmp_path):
     state = State(tmp_path / 'history.sqlite3')
     item = Article('天津大学获批脑机接口博士点', 'https://news.example/reprint',
                    str(DAY), '媒体', summary='搜索摘要称近日获批。', date_evidence='search')
@@ -141,8 +141,59 @@ def test_recent_search_date_cannot_replace_missing_event_date(tmp_path):
         def chat(self, *args, **kwargs):
             return {'relevant': True, 'single_event': True, 'event_date': '', 'date_quote': '',
                     'focus_quote': '', 'focus_title': ''}
-    assert not verify_finalist(item, Reader(), AI(), state, DAY)
-    assert not item.content_verified
+    assert verify_finalist(item, Reader(), AI(), state, DAY)
+    assert item.content_verified
+    assert item.published == '2026-10-12'
+    assert item.event_date == ''
+    assert item.in_window(DAY, {'行业': 3}, True)
+    state.close()
+
+
+def test_page_without_any_date_keeps_existing_discovery_date(tmp_path):
+    state = State(tmp_path / 'history.sqlite3')
+    item = Article('企业发布脑电耳机', 'https://news.example/item', str(DAY),
+                   '媒体', summary='搜索摘要', date_evidence='search')
+    class Reader:
+        def get(self, url):
+            return '<article>企业发布脑电耳机，用于睡眠监测。</article>'
+    class AI:
+        def chat(self, task, payload, **kwargs):
+            assert payload['publication_date'] == ''
+            return {'relevant': True, 'single_event': True, 'event_date': '',
+                    'date_quote': '', 'focus_quote': '', 'focus_title': ''}
+    assert verify_finalist(item, Reader(), AI(), state, DAY)
+    assert item.published == str(DAY)
+    assert item.date_evidence == 'search'
+    assert item.event_date == ''
+    state.close()
+
+
+def test_clear_review_day_preserves_raw_candidates_and_sent_records(tmp_path):
+    state = State(tmp_path / 'history.sqlite3')
+    unsent = Article('未发送脑电耳机报道', 'https://news.example/unsent', str(DAY), '媒体')
+    sent = Article('已发送脑电耳机报道', 'https://news.example/sent', str(DAY), '媒体')
+    untouched = Article('未分析的候选', 'https://news.example/raw', str(DAY), '媒体')
+    for item in (unsent, sent, untouched):
+        state.retain_candidates([item], DAY)
+        if item is not untouched:
+            item.relevance, item.accepted = 90, True
+        state.save(item)
+    state.mark([sent], DAY, 'sent')
+    state.record_sent_events([sent], DAY)
+    for item in (unsent, sent):
+        state.put('ai:' + item.identity, {'day': str(DAY), 'row': {'relevance': 90}})
+    state.put('event-v1:one', {'day': str(DAY), 'result': {}})
+    result = state.clear_unsent_reviews(DAY)
+    assert result['reviewed_removed'] == 1
+    assert state.cached(unsent) is None
+    assert state.get('ai:' + unsent.identity) is None
+    assert state.get('event-v1:one') is None
+    assert state.cached(sent) is not None
+    assert state.get('ai:' + sent.identity) is not None
+    assert state.sent(sent)
+    assert state.cached(untouched) is not None
+    assert {item.identity for item in state.candidates()} == {
+        unsent.identity, sent.identity, untouched.identity}
     state.close()
 
 
@@ -176,7 +227,7 @@ def test_event_date_from_page_without_publication_header(tmp_path):
                     'date_quote': '10月12日', 'focus_quote': '10月12日，企业推出脑电耳机。',
                     'focus_title': ''}
     assert verify_finalist(item, Reader(), AI(), state, DAY)
-    assert item.published == ''
+    assert item.published == str(DAY)
     assert item.in_window(DAY, {'行业': 3}, True)
     assert '2026-10-12' in render([item], DAY)[1]
     state.close()

@@ -39,7 +39,8 @@ def _date_quote_matches(value, quote, publication_date=''):
 def inspect_event(item, provider, state=None, today=None):
     """One AI pass over the read page: verify the event, date and editorial focus."""
     body = item.body[:12000]
-    publication_date = '' if item.date_evidence == 'recent_first_seen' else item.published
+    # Search-result dates and first discovery are not dates printed by the page.
+    publication_date = item.published if item.date_evidence in {'article_meta', 'article_visible'} else ''
     cache_key = 'event-v1:' + digest(item.url + item.title + publication_date + body)
     cached = state.get(cache_key) if state is not None else None
     if cached is not None:
@@ -55,7 +56,7 @@ def inspect_event(item, provider, state=None, today=None):
             '若为周报/合集，只选择与脑机、脑电、消费级耳机/眼镜直接相关的一个具体事件；'
             '若没有可核实的单一事件，single_event=false。'
             '必须区分旧事新报、背景介绍与新发生的动作；只凭网页发布日期不能推断事件日期。'
-            'event_date用YYYY-MM-DD；正文无明确日期，且无可结合网页发布日期解释的今日/昨日表述时留空。'
+            'event_date用YYYY-MM-DD；正文无明确事件日期时留空，不要把网页发布日期冒充事件日期。'
             'date_quote必须原样复制正文中证明事件日期的短片段，不能改写；近日不足以证明三天内。'
             'focus_quote是正文中直接描述主体、动作、结果的连续片段，最多350字；'
             '普通单篇文章也优先给出，不能用无关产品或背景段落。'
@@ -140,10 +141,9 @@ def verify_finalist(item, reader, provider, state, today, *, offline=False):
     if page.published and page.date_evidence in {'article_meta', 'article_visible'}:
         item.published = page.published
         item.date_evidence = page.date_evidence
-    elif page is not item:
-        # Search-result and URL dates cannot masquerade as an article header.
-        item.published = ''
-        item.date_evidence = page.date_evidence
+    # If the page has no date of its own, keep the existing discovery date.
+    # It is only a fallback for the freshness window, never proof of when the
+    # reported event happened.
     if page.url != item.url:
         item.url, item.source = page.url, page.source
     try:
@@ -155,11 +155,10 @@ def verify_finalist(item, reader, provider, state, today, *, offline=False):
     if not single:
         state.error(today, '事件日期核对', 'no_single_relevant_event')
         return False
-    if not event_date:
-        state.error(today, '事件日期核对', 'event_date_not_proven_by_page')
-        return False
     roundup = r'weekly|roundup|周报|周刊|一周|\d{1,2}\.\d{1,2}\s*[-—]\s*\d{1,2}\.\d{1,2}'
     if re.search(roundup, item.title, re.I):
+        # A collection can mix old and new events; its recent publication
+        # date alone cannot establish the date of the chosen item.
         if not event_date or not focus:
             state.error(today, '事件日期核对', 'roundup_event_not_located')
             return False
