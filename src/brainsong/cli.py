@@ -1,7 +1,7 @@
 import argparse
 import json
 import signal
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--resume", action="store_true", help="复用候选缓存，执行配置中的定向补搜，不重抓信源列表")
     parser.add_argument("--cached-only", action="store_true", help="只补分析缓存候选，不执行信源列表采集或常规搜索")
     parser.add_argument("--prune-only", action="store_true", help="只清理过期候选（无日期按首次发现时间），不搜索、不推送")
+    parser.add_argument("--clear-review-day", type=date.fromisoformat,
+                        help="仅清除指定日期未发送的已检验结果；保留原始候选和发送历史")
     args = parser.parse_args()
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     # Actions cancellation sends SIGINT then SIGTERM. Unwind the pipeline's
@@ -28,6 +30,20 @@ def main():
         raise SystemExit(130)
     previous = {sig: signal.signal(sig, cancelled) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
+        if args.clear_review_day:
+            if args.send or args.offline or args.resume or args.cached_only or args.prune_only:
+                parser.error("--clear-review-day 不能与采集、发送或其他维护选项组合")
+            if args.clear_review_day > today:
+                parser.error("不能清理未来日期的核验结果")
+            path = args.state or Path(args.root) / 'state/brainsong.sqlite3'
+            state = State(path)
+            try:
+                result = state.clear_unsent_reviews(args.clear_review_day)
+            finally:
+                state.close()
+            print(json.dumps({'clear_review_day': args.clear_review_day.isoformat(),
+                              **result}, ensure_ascii=False))
+            return
         if args.prune_only:
             if args.send or args.offline or args.resume or args.cached_only:
                 parser.error("--prune-only 不能与采集、发送或离线选项组合")

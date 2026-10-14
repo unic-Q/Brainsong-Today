@@ -190,6 +190,40 @@ class State:
         return [Article(**json.loads(payload)) for (payload,) in self.db.execute(
             "SELECT payload FROM sent_events WHERE day>=? OR category='政策' ORDER BY day DESC", (cutoff,))]
 
+    def clear_unsent_reviews(self, day):
+        """Undo a day's unsent assessments without losing source candidates or delivery history."""
+        target = day.isoformat()
+        reviewed = [(identity, Article(**json.loads(payload))) for identity, payload in self.db.execute(
+            """SELECT a.id,a.payload FROM articles a JOIN candidate_inputs c ON c.id=a.id
+               WHERE c.last_seen=? AND json_extract(a.payload,'$.relevance') IS NOT NULL""",
+            (target,))]
+        unsent = [identity for identity, item in reviewed if not self.sent(item)]
+        removed_keys = 0
+        with self.db:
+            for identity in unsent:
+                self.db.execute('DELETE FROM articles WHERE id=?', (identity,))
+                for prefix in ('ai:', 'summary-v6:', 'launch-v1:', 'product-page-v1:'):
+                    removed_keys += self.db.execute('DELETE FROM kv WHERE key=?',
+                                                    (prefix + identity,)).rowcount
+            # These decisions are keyed by a page/batch digest, not an article ID.
+            # Recomputing them is safe; actual sent-event records are untouched.
+            for prefix in ('event-v1:', 'dedup:', 'crossday:'):
+                removed_keys += self.db.execute(
+                    "DELETE FROM kv WHERE key LIKE ? AND json_extract(value,'$.day')=?",
+                    (prefix + '%', target)).rowcount
+            # A failed run may cache an assessment before its article is saved.
+            for key, value in self.db.execute("SELECT key,value FROM kv WHERE key LIKE 'ai:%'"):
+                if json.loads(value).get('day') != target:
+                    continue
+                identity = key.removeprefix('ai:')
+                if identity in unsent:
+                    continue
+                article = self.db.execute('SELECT payload FROM articles WHERE id=?',
+                                          (identity,)).fetchone()
+                if article is None or not self.sent(Article(**json.loads(article[0]))):
+                    removed_keys += self.db.execute('DELETE FROM kv WHERE key=?', (key,)).rowcount
+        return {'reviewed_removed': len(unsent), 'review_cache_removed': removed_keys}
+
     def source_authority(self, publisher_key):
         row = self.db.execute('SELECT authority,recognition,basis FROM source_authority '
                               'WHERE publisher_key=?', (publisher_key,)).fetchone()

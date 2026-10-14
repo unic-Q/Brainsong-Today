@@ -23,6 +23,10 @@ on:
         description: "仅清理过期及无日期候选并保存状态；不搜索、不推送"
         type: boolean
         default: false
+      clear_review_day:
+        description: "清除指定日期未发送的已检验结果（YYYY-MM-DD）；不搜索、不推送"
+        type: string
+        default: ""
       reset_delivery_once:
         description: "仅正式群首发时勾选：备份并一次性重置旧发送历史，须同时启用发送"
         type: boolean
@@ -64,13 +68,18 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           INITIALIZE_STATE: ${{ inputs.initialize_state }}
         run: uv run python tools/restore_state.py
+      - name: Clear unsent reviews for one day
+        if: github.event_name == 'workflow_dispatch' && inputs.clear_review_day != ''
+        env:
+          CLEAR_REVIEW_DAY: ${{ inputs.clear_review_day }}
+        run: uv run brainsong-today --clear-review-day "$CLEAR_REVIEW_DAY"
       - name: One-time formal launch reset
-        if: github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once && !inputs.prune_only && inputs.rollback_test_run_id == ''
+        if: github.event_name == 'workflow_dispatch' && inputs.reset_delivery_once && !inputs.prune_only && inputs.rollback_test_run_id == '' && inputs.clear_review_day == ''
         env:
           SEND_BRIEF: ${{ inputs.send }}
         run: uv run python tools/reset_delivery_once.py --confirm-official-launch
       - name: Roll back one test delivery
-        if: github.event_name == 'workflow_dispatch' && inputs.rollback_test_run_id != ''
+        if: github.event_name == 'workflow_dispatch' && inputs.rollback_test_run_id != '' && inputs.clear_review_day == ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -78,12 +87,12 @@ jobs:
         run: uv run python tools/rollback_test_delivery.py "${{ inputs.rollback_test_run_id }}"
       - name: Check daily delivery lock
         id: daily_guard
-        if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == ''
+        if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == '' && inputs.clear_review_day == ''
         env:
           DAILY_DELIVERY: ${{ (github.event_name == 'schedule' || inputs.daily_delivery) && !inputs.prune_only }}
         run: uv run python tools/daily_delivery_guard.py
       - name: Collect, select and deliver
-        if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == '' && steps.daily_guard.outputs.should_run == 'true'
+        if: steps.restore.outcome == 'success' && inputs.rollback_test_run_id == '' && inputs.clear_review_day == '' && steps.daily_guard.outputs.should_run == 'true'
         env:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
