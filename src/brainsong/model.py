@@ -39,7 +39,9 @@ def dictionary_result(url: str) -> bool:
 def freshness_factor(item, today: date, scoring=None) -> float:
     """Calendar-day tiers; date-only sources cannot support exact 24h ages."""
     try:
-        age = (today - date.fromisoformat((item.event_date or item.first_reported or item.published)[:10])).days
+        day = (item.event_date or
+               (item.first_reported if item.date_evidence == 'recent_first_seen' else item.published))
+        age = (today - date.fromisoformat(day[:10])).days
     except ValueError:
         return 0.0
     if not 0 <= age < 30:
@@ -209,6 +211,7 @@ class Article:
     source_authority: float | None = None
     source_recognition: float | None = None
     content_verified: bool = False
+    verification_basis: str = ''
 
     def __post_init__(self):
         self.url = canonical(self.url)
@@ -240,7 +243,8 @@ class Article:
 
     def in_window(self, today: date, windows: dict, use_first_reported=False) -> bool:
         try:
-            value = (self.event_date or self.first_reported or self.published) if use_first_reported else self.published
+            value = (self.event_date or
+                     (self.first_reported if self.date_evidence == 'recent_first_seen' else self.published)) if use_first_reported else self.published
             age = (today - date.fromisoformat(value[:10])).days
             return 0 <= age < windows[self.category]
         except (ValueError, KeyError):

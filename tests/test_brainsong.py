@@ -80,7 +80,7 @@ def test_score_first_seven_cap(tmp_path):
     items = [article(i, score=100) for i in range(8)]
     items[-1].category, items[-1].score = "政策", 55
     picks = select(items, state, DAY, cfg)
-    assert len(picks) == 4
+    assert len(picks) == 3  # Fourth item falls below the 2.5-star floor.
     assert sum(a.category == '行业' for a in picks) == 3
     title, body = render(picks, DAY)
     assert title == "Brainsong Today | 2026-09-17"

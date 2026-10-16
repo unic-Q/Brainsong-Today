@@ -31,6 +31,9 @@ class State:
         CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT);
         CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY, day TEXT, stage TEXT, detail TEXT);
         CREATE INDEX IF NOT EXISTS errors_date ON errors(day);
+        CREATE TABLE IF NOT EXISTS source_checks(
+            day TEXT, host TEXT, result TEXT, reason TEXT, count INTEGER NOT NULL,
+            PRIMARY KEY(day, host, result, reason));
         """)
         # Preserve first discovery across automatic candidate expiry. This is a
         # lightweight identity ledger, not a copy of article text.
@@ -229,6 +232,31 @@ class State:
                               'WHERE publisher_key=?', (publisher_key,)).fetchone()
         return dict(zip(('authority','recognition','basis'), row)) if row else None
 
+    def record_source_check(self, host, today, result, reason=''):
+        if not host:
+            return
+        self.db.execute('INSERT INTO source_checks VALUES (?,?,?,?,1) '
+                        'ON CONFLICT(day,host,result,reason) DO UPDATE SET count=count+1',
+                        (today.isoformat(), host.lower(), result, reason[:100]))
+        self.db.commit()
+
+    def source_health(self, today, days=7, min_failures=3):
+        """Report repeated problems; never alter the source configuration."""
+        cutoff = (today-timedelta(days=days-1)).isoformat()
+        rows = self.db.execute('SELECT host,result,reason,SUM(count) FROM source_checks '
+                               'WHERE day>=? GROUP BY host,result,reason', (cutoff,))
+        by_host = {}
+        for host, result, reason, count in rows:
+            entry = by_host.setdefault(host, {'host': host, 'read_ok': 0,
+                                              'read_failed': 0, 'information_failed': 0,
+                                              'reasons': {}})
+            if result in entry:
+                entry[result] += count
+            if result != 'read_ok':
+                entry['reasons'][reason] = entry['reasons'].get(reason, 0) + count
+        return [entry for entry in by_host.values()
+                if entry['read_failed'] + entry['information_failed'] >= min_failures]
+
     def record_source_authority(self, key, name, url, authority, recognition, basis, today):
         self.db.execute('INSERT OR IGNORE INTO source_authority VALUES (?,?,?,?,?,?,?)',
                         (key, name, url, authority, recognition, basis, today.isoformat()))
@@ -362,6 +390,7 @@ class State:
                 self.db.executemany(f'DELETE FROM {table} WHERE id=?',
                                     [(identity,) for identity in undated_ids])
         self.db.execute("DELETE FROM errors WHERE day<?", ((today-timedelta(days=90)).isoformat(),))
+        self.db.execute("DELETE FROM source_checks WHERE day<?", ((today-timedelta(days=30)).isoformat(),))
         self.db.execute("DELETE FROM delivered WHERE day<? AND status!='pending'", ((today-timedelta(days=365)).isoformat(),))
         self.db.execute("DELETE FROM sent_events WHERE day<? AND category!='政策'", ((today-timedelta(days=event_days)).isoformat(),))
         cutoff = (today-timedelta(days=30)).isoformat()

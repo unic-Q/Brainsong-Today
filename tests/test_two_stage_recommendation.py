@@ -14,6 +14,36 @@ def test_half_stars_without_padding(score, stars):
     assert star_text(score) == stars
 
 
+def test_below_two_and_a_half_stars_never_selected(tmp_path):
+    cfg = {'max_items': 7, 'shortlist_items': 10,
+           'windows': dict.fromkeys(['行业', '资本', '政策', '学术'], 30),
+           'minimum_recommendation_score': 45,
+           'scoring': {'source_domains': {'weak.test': [50, 50]}}}
+    state = State(tmp_path / 'state.db')
+    low = Article('低权威消息', 'https://weak.test/low', str(DAY), '媒体', relevance=89)
+    threshold = Article('达到两星半', 'https://weak.test/yes', str(DAY), '媒体', relevance=90)
+    assert star_text(ranking_score(low, DAY, cfg['scoring'])) == '★★'
+    assert star_text(ranking_score(threshold, DAY, cfg['scoring'])) == '★★☆'
+    assert select([low, threshold], state, DAY, cfg) == [threshold]
+    state.close()
+
+
+def test_failed_ai_summary_uses_existing_source_excerpt(tmp_path):
+    state = State(tmp_path / 'state.db')
+    evidence = ('某企业发布耳周脑电耳机，支持睡眠状态记录和情绪识别，'
+                '并说明了设备的采集方式与数据处理流程。') * 3
+    item = Article('耳周脑电耳机新品', 'https://news.example/item', str(DAY),
+                   '媒体', summary=evidence, summary_kind='search')
+    class FailingAI:
+        def chat(self, *args, **kwargs):
+            raise RuntimeError('summary unavailable')
+    summarize(item, FailingAI(), state, DAY)
+    assert item.summary_kind == 'source'
+    assert item.summary.startswith('某企业发布')
+    assert len(item.summary) <= 100
+    state.close()
+
+
 def test_two_stages_never_multiply_relevance_twice(tmp_path):
     cfg = {'max_items':7, 'shortlist_items':10, 'windows':dict.fromkeys(['行业','资本','政策','学术'],30),
            'scoring':{'source_domains':{'strong.test':[100,100], 'weak.test':[50,50]}}}

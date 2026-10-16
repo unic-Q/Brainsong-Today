@@ -130,6 +130,56 @@ def test_unreadable_wechat_search_hit_is_not_passed_as_full_text(tmp_path):
     state.close()
 
 
+def test_unreadable_original_keeps_usable_search_summary(tmp_path):
+    state = State(tmp_path / 'history.sqlite3')
+    item = Article('企业发布脑电耳机', 'https://mp.weixin.qq.com/s/example', str(DAY),
+                   '公众号', summary='企业发布采用耳周脑电采集的新款耳机，面向睡眠场景。',
+                   date_evidence='search')
+    class Reader:
+        def get(self, url):
+            raise ValueError('robots禁止抓取')
+    assert verify_finalist(item, Reader(), object(), state, DAY)
+    assert item.verification_basis == 'summary_only'
+    assert item.summary.startswith('企业发布')
+    assert item.event_date == ''
+    health = state.source_health(DAY, min_failures=1)
+    assert health[0]['host'] == 'mp.weixin.qq.com'
+    assert health[0]['read_failed'] == 1
+    state.close()
+
+
+def test_plain_summary_does_not_trigger_full_page_read(tmp_path):
+    state = State(tmp_path / 'history.sqlite3')
+    item = Article('耳周脑电技术综述', 'https://journal.example/review', str(DAY),
+                   '期刊', summary='文章梳理耳周脑电的信号采集方法及常见应用场景。',
+                   date_evidence='search')
+    class Reader:
+        def get(self, url):
+            raise AssertionError('No concrete date or event to verify')
+    assert verify_finalist(item, Reader(), object(), state, DAY)
+    assert item.verification_basis == 'summary_only'
+    state.close()
+
+
+def test_original_date_overrides_new_discovery_date(tmp_path):
+    state = State(tmp_path / 'history.sqlite3')
+    item = Article('企业发布脑电耳机', 'https://news.example/old', str(DAY), '媒体',
+                   summary='企业发布面向睡眠监测的脑电耳机。', date_evidence='search',
+                   first_reported=str(DAY))
+    class Reader:
+        def get(self, url):
+            return ('<meta property="article:published_time" content="2026-09-19">'
+                    '<article>企业发布面向睡眠监测的脑电耳机。</article>')
+    class AI:
+        def chat(self, *args, **kwargs):
+            return {'relevant': True, 'single_event': True, 'event_date': '',
+                    'date_quote': '', 'focus_quote': '', 'focus_title': ''}
+    assert verify_finalist(item, Reader(), AI(), state, DAY)
+    assert item.published == '2026-09-19'
+    assert not item.in_window(DAY, {'行业': 3}, True)
+    state.close()
+
+
 def test_recent_page_without_event_date_keeps_its_publication_date(tmp_path):
     state = State(tmp_path / 'history.sqlite3')
     item = Article('天津大学获批脑机接口博士点', 'https://news.example/reprint',

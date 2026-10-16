@@ -245,7 +245,9 @@ def select(items, state, today, cfg):
         (a.date_evidence != 'recent_first_seen' or a.category in {'行业', '资本'}) and a.in_window(
         today, cfg["windows"], cfg.get('strict_event_freshness', False)) and not state.sent(a)]
     scoring = cfg.get('scoring', {})
-    eligible = [a for a in eligible if shortlist_score(a, today, scoring) > 0 and ranking_score(a, today, scoring) > 0]
+    minimum = cfg.get('minimum_recommendation_score', 45)
+    eligible = [a for a in eligible if shortlist_score(a, today, scoring) > 0
+                and ranking_score(a, today, scoring) >= minimum]
     eligible.sort(key=lambda a: ((a.event_date or a.first_reported or a.published)[:10]
                                  if cfg.get('acquisition', {}).get('recency_first') else '',
                                 shortlist_score(a, today, scoring), a.published, a.identity), reverse=True)
@@ -314,7 +316,8 @@ def fill_link_only(picks, failed, state, today, cfg):
                 or item.summary_kind != 'failed' or not canonical(item.url) or not item.title.strip()
                 or state.sent(item) or state.deleted(item) or not item.in_window(
                     today, cfg['windows'], cfg.get('strict_event_freshness', False))
-                or ranking_score(item,today,scoring) <= 0 or shortlist_score(item,today,scoring) <= 0):
+                or ranking_score(item,today,scoring) < cfg.get('minimum_recommendation_score', 45)
+                or shortlist_score(item,today,scoring) <= 0):
             continue
         limit = cfg.get('max_category_items',3)
         if item.category == '学术':
@@ -448,8 +451,13 @@ def summarize(item, provider, state, today):
         state.put(cache_key, {"summary": item.summary, "version": version, "evidence": signature, "day": today.isoformat()})
     except Exception as exc:
         state.error(today, "摘要", exc)
-        item.summary = ""
-        item.summary_kind = "failed"
+        fallback = fit_summary(source_summary) if source_summary else ''
+        if display_summary(subject_first(fallback), item.title) and not claims_known_day(fallback):
+            item.summary = subject_first(fallback)
+            item.summary_kind = 'source'
+        else:
+            item.summary = ""
+            item.summary_kind = "failed"
 
 
 def compact_title(item, provider, state, today):

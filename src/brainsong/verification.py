@@ -1,9 +1,4 @@
-"""Read finalist source pages and distinguish the event from a later repost.
-
-No search call is made here.  An already-discovered alternate source may be
-opened when the primary page cannot be read, but search snippets are not
-silently treated as page text or as proof of a publication date.
-"""
+"""Check concrete claims against readable original pages when possible."""
 import re
 from datetime import date, timedelta
 from urllib.parse import urlsplit
@@ -11,6 +6,41 @@ from urllib.parse import urlsplit
 from .collect import date_text, metadata
 from .model import Article, digest
 from .provider import QualityError
+
+
+EVENT_OR_DATE = re.compile(
+    r'20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}|'
+    r'(?<!\d)\d{1,2}月\d{1,2}日|\b(?:today|yesterday|on \w+ \d{1,2})\b|'
+    r'今日|今天|昨日|昨天|近日|本周|上周|'
+    r'周报|周刊|合集|一款|\d{1,2}\.\d{1,2}\s*[-—]\s*\d{1,2}\.\d{1,2}|'
+    r'发布|推出|上市|首发|获批|印发|签署|完成|获得|融资|投资|收购|并购|'
+    r'启动|开放|上线|发表|披露|公布|宣布|展示|亮相|获奖|申请|提交|'
+    r'published|launched|announced|raised|acquired|released', re.I)
+
+
+def needs_original_check(item):
+    """Evergreen summaries do not need the expensive finalist page review."""
+    return bool(EVENT_OR_DATE.search(item.title + ' ' + (item.source_summary or item.summary)))
+
+
+def summary_fallback(item, state, today, reason):
+    from .editor import usable_summary
+
+    summary = item.source_summary or item.summary
+    if not usable_summary(summary, item.title):
+        state.record_source_check(urlsplit(item.url).hostname or '', today,
+                                  'information_failed', reason + ':no_usable_summary')
+        state.error(today, '全文核对', reason + ':no_usable_summary')
+        return False
+    # Keep the discovery/source summary and its provenance; this is not a
+    # successful full-page verification and cannot override a page date.
+    item.summary = summary
+    item.source_summary = summary
+    item.content_verified = True
+    item.verification_basis = 'summary_only'
+    if reason != 'no_concrete_claim':
+        state.error(today, '全文核对', reason + ':summary_only')
+    return True
 
 
 def _date_quote_matches(value, quote, publication_date=''):
@@ -107,7 +137,10 @@ def verify_finalist(item, reader, provider, state, today, *, offline=False):
         # arXiv Atom itself supplies the version date and full abstract.
         item.content_verified = True
         item.event_date = item.published
+        item.verification_basis = 'official_feed' if not offline else 'offline'
         return True
+    if not needs_original_check(item):
+        return summary_fallback(item, state, today, 'no_concrete_claim')
     urls = list(dict.fromkeys([item.url] + [s.get('url', '') for s in item.sources]))
     # Earlier metadata enrichment may already have read this exact page.
     page = item if (item.body and item.date_evidence in
@@ -123,14 +156,26 @@ def verify_finalist(item, reader, provider, state, today, *, offline=False):
                          if s.get('url') == url), item.source)
             candidate = Article(item.title, url, '', name)
             metadata(candidate, html)
+            if (candidate.published and candidate.date_evidence in
+                    {'article_meta', 'article_visible'} and url == item.url):
+                item.published = candidate.published
+                item.date_evidence = candidate.date_evidence
             if candidate.body:
+                state.record_source_check(urlsplit(url).hostname or '', today, 'read_ok')
                 page = candidate
                 break
+            state.record_source_check(urlsplit(url).hostname or '', today,
+                                      'information_failed', 'empty_article_body')
         except Exception as exc:
+            reason = ('robots_disallowed' if 'robots禁止抓取' in str(exc) else
+                      type(exc).__name__)
+            if hasattr(exc, 'response') and hasattr(exc.response, 'status_code'):
+                reason += '_HTTP_' + str(exc.response.status_code)
+            state.record_source_check(urlsplit(url).hostname or '', today,
+                                      'read_failed', reason)
             state.error(today, '全文读取:' + (urlsplit(url).hostname or ''), exc)
     if page is None:
-        state.error(today, '全文核对', 'no_readable_page')
-        return False
+        return summary_fallback(item, state, today, 'no_readable_page')
     verified_summary = page.summary if page is not item or item.summary_kind != 'search' else ''
     item.body = page.body
     item.source_excerpt = page.body[:6000]
@@ -150,9 +195,13 @@ def verify_finalist(item, reader, provider, state, today, *, offline=False):
         single, event_date, focus, focus_title, subject, category, tags = inspect_event(
             item, provider, state, today)
     except Exception as exc:
+        state.record_source_check(urlsplit(item.url).hostname or '', today,
+                                  'information_failed', 'event_review_error')
         state.error(today, '事件日期核对', exc)
         return False
     if not single:
+        state.record_source_check(urlsplit(item.url).hostname or '', today,
+                                  'information_failed', 'no_single_relevant_event')
         state.error(today, '事件日期核对', 'no_single_relevant_event')
         return False
     roundup = r'weekly|roundup|周报|周刊|一周|\d{1,2}\.\d{1,2}\s*[-—]\s*\d{1,2}\.\d{1,2}'
@@ -176,4 +225,5 @@ def verify_finalist(item, reader, provider, state, today, *, offline=False):
         if focus_title:
             item.display_title = focus_title[:90]
     item.content_verified = True
+    item.verification_basis = 'original_page'
     return True

@@ -79,6 +79,9 @@ def load(root):
         raise ValueError('替换候选优势系数必须大于1且不超过2')
     if cfg.get('shortlist_items', 10) != 10:
         raise ValueError('当前两轮方案入围池必须为10条')
+    minimum = cfg.get('minimum_recommendation_score', 45)
+    if not isinstance(minimum, (int, float)) or not 0 <= minimum <= 100:
+        raise ValueError('最低推荐分必须为0至100')
     if cfg.get('policy_scope') != 'china':
         raise ValueError('政策范围必须限定为中国国内')
     for topic in cfg['search_topics']:
@@ -697,6 +700,8 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
                                          cfg, rules, exclusions, state, provider, reader, today,
                                          progress, offline=offline, no_ai=no_ai, date_checks=date_checks,
                                          recent_undated_ids=recent_undated_ids)
+        picks = [a for a in picks if ranking_score(a, today, cfg.get('scoring'))
+                 >= cfg.get('minimum_recommendation_score', 45)]
         picks.sort(key=lambda a: (ranking_score(a, today, cfg.get('scoring')), shortlist_score(a, today, cfg.get('scoring')), a.identity), reverse=True)
         for item in picks:
             item.recommendation_score = ranking_score(item, today, cfg.get('scoring'))
@@ -777,6 +782,24 @@ def run(root, today, *, offline=False, no_ai=False, send=False, fixture=None, st
     finally:
         logs = root / "logs"
         logs.mkdir(exist_ok=True)
+        troubled = state.source_health(today)
+        recent = state.recent_sent_events(today, 7)
+        replacement_sites = []
+        failed_hosts = {row['host'] for row in troubled}
+        for article in recent:
+            for source in article.sources:
+                host = (urlsplit(source.get('url', '')).hostname or '').lower()
+                if (host and host not in failed_hosts and
+                        all(site['host'] != host for site in replacement_sites) and
+                        source_factor(article, cfg.get('scoring')) >= .7):
+                    replacement_sites.append({'host': host, 'name': source.get('name', host),
+                                              'example_title': article.title,
+                                              'example_url': source.get('url', '')})
+        for row in troubled:
+            row['recommendations'] = replacement_sites[:2]
+            row['status'] = '待报告与复核；未自动剔除'
+        (logs / f"{today.isoformat()}-source-health.json").write_text(
+            json.dumps(troubled, ensure_ascii=False, indent=2), encoding='utf-8')
         (logs / f"{today.isoformat()}-ai.json").write_text(json.dumps({"calls": provider.calls, "usage": provider.usage,
                                                                    "responses": provider.diagnostics}, ensure_ascii=False, indent=2), encoding="utf-8")
         rows = state.db.execute("SELECT day,stage,detail FROM errors WHERE day=?", (today.isoformat(),)).fetchall()
